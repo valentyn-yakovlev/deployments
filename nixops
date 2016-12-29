@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+NIXOPS=${NIXOPS:-nixops}
+NIXOPS_STATE=${NIXOPS_STATE:-./secrets/store/deployments.nixops}
+
+fatal() {
+  echo '** ERROR:' "$@" >&2
+  exit 1
+}
+
+if [ "${#}" -lt 1 ]; then
+    fatal "missing arguments."
+fi
+
+cmd="${1}"; shift
+state="$(dirname ${NIXOPS_STATE})/$(basename ${NIXOPS_STATE} .nixops).json"
+
+cd "$(dirname "$0")"
+trap 'save' EXIT
+
+save() {
+  if [ -f "${NIXOPS_STATE}" ]; then
+    "${NIXOPS}" export --all > "${state}.tmp"
+    mv "${state}.tmp" "${state}"
+    rm -f "${NIXOPS_STATE}"
+  fi
+}
+
+case "${cmd}" in
+  *)
+    [ -f "${state}" ] || fatal "\`${state}' does not exist."
+    "${NIXOPS}" import < "${state}"
+    "${NIXOPS}" "${cmd}" "$@"
+    ;;
+esac
+
+exit 0
+
+# Local Variables:
+# mode: shell-script
+# sh-basic-offset: 2
+# End:

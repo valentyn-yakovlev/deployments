@@ -1,0 +1,37 @@
+* Using the ~none~ backend
+
+  When using ~deployment.targetEnv="none"~, you can overwrite
+  ~/etc/nixos/configuration.nix~ and ~/etc/nixos/hardware-configuration.nix~
+  since they no longer represent the state of the system, and you shouldn't be
+  running ~nixos-rebuild~ anyway.
+
+  #+begin_example
+  [root@kasumi:/etc/nixos]# rm ./configuration.nix ./hardware-configuration.nix
+
+  [root@kasumi:/etc/nixos]# nixos-generate-config --root /
+  writing /etc/nixos/hardware-configuration.nix...
+  writing /etc/nixos/configuration.nix...
+  #+end_example
+
+* ~matrix-synapse~
+
+  Create a database:
+
+  #+begin_example
+  [root@kasumi:~]# psql postgres
+  psql (9.4.9)
+  Type "help" for help.
+
+  postgres=#
+
+  root=# create user synapse with password 'hunter2';
+  CREATE ROLE
+
+  root=# CREATE DATABASE "matrix-synapse"
+  root-# ENCODING 'UTF8'
+  root-# LC_COLLATE='C'
+  root-# LC_CTYPE='C'
+  root-# template=template0
+  root-# OWNER synapse;
+  CREATE DATABASE
+  #+end_example
