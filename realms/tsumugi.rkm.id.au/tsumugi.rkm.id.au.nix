@@ -4,6 +4,7 @@ let
 
   sshKeys = import ./../../common/ssh-keys.nix;
   secrets = import ./secrets.nix;
+  commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
 
 in
 
@@ -12,7 +13,10 @@ in
 
   tsumugi = { config, lib, pkgs, ... }:
   {
-    # imports = [ ../../local/modules/module-list.nix ];
+    imports = [
+     # ../../local/modules/module-list.nix
+     ./nextcloud.nix
+    ];
 
     boot = {
       loader = {
@@ -61,7 +65,6 @@ in
 
     environment = {
       systemPackages = with pkgs; [
-        nextcloud
         bash
         bind
         bzip2
@@ -129,6 +132,10 @@ in
       enable = true;
       user = "www-data";
       group = "www-data";
+      # sslProtocols = "TLSv1 TLSv1.1 TLSv1.2";
+      appendConfig = ''
+        error_log stderr info;
+      '';
       virtualHosts =
       let
         commonVirtualHostConfig = {
@@ -148,70 +155,6 @@ in
           };
         };
       in {
-        "nextcloud.rkm.id.au" = commonVirtualHostConfig // {
-          root = pkgs.nextcloud;
-          locations = commonVirtualHostConfig.locations // {
-            "~ ^/(?:\.htaccess|data|config|db_structure\.xml|README)" = {
-              extraConfig = "deny all;";
-            };
-            "/" = {
-              extraConfig = ''
-                # The following 2 rules are only needed with webfinger
-                rewrite ^/.well-known/host-meta /public.php?service=host-meta last;
-                rewrite ^/.well-known/host-meta.json /public.php?service=host-meta-json last;
-                rewrite ^/.well-known/carddav /remote.php/carddav/ redirect;
-                rewrite ^/.well-known/caldav /remote.php/caldav/ redirect;
-                rewrite ^(/core/doc/[^\/]+/)$ $1/index.html;
-                try_files $uri $uri/ /index.php;
-              '';
-            };
-            "~ \.php(?:$|/)" = {
-              extraConfig = ''
-                fastcgi_split_path_info ^(.+\.php)(/.+)$;
-                include ${pkgs.nginx}/conf/fastcgi_params;
-                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-                fastcgi_param PATH_INFO $fastcgi_path_info;
-                fastcgi_param HTTPS on;
-                fastcgi_pass unix:/run/phpfpm/nginx;
-                fastcgi_intercept_errors on;
-              '';
-            };
-            "~* \.(?:css|js)$" = {
-              extraConfig = ''
-                # Add cache control header for js and css files.
-                # Make sure it is below the "~ \.php(?:$|/)" block.
-                add_header Cache-Control "public, max-age=7200";
-                # Add headers to serve security related headers
-                add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload;";
-                add_header X-Content-Type-Options nosniff;
-                add_header X-Frame-Options "SAMEORIGIN";
-                add_header X-XSS-Protection "1; mode=block";
-                add_header X-Robots-Tag none;
-                # Optional: Don't log access to assets.
-                access_log off;
-              '';
-            };
-            "~* \.(?:jpg|jpeg|gif|bmp|ico|png|swf)$" = {
-              extraConfig = ''
-                # Optional: Don't log access to other assets.
-                access_log off;
-              '';
-            };
-          };
-          extraConfig = ''
-            client_max_body_size 10G;
-            fastcgi_buffers 64 4K;
-            gzip off; # Disable gzip to avoid the removal of the ETag header.
-            rewrite ^/caldav(.*)$ /remote.php/caldav$1 redirect;
-            rewrite ^/carddav(.*)$ /remote.php/carddav$1 redirect;
-            rewrite ^/webdav(.*)$ /remote.php/webdav$1 redirect;
-            index index.php;
-            error_page 403 /core/templates/403.php;
-            error_page 404 /core/templates/404.php;
-          '';
-          sslCertificate = "/var/lib/acme/nextcloud.rkm.id.au/fullchain.pem";
-          sslCertificateKey = "/var/lib/acme/nextcloud.rkm.id.au/key.pem";
-        };
         "matrix.rkm.id.au" = commonVirtualHostConfig // {
           locations = {
             "/.well-known/acme-challenge" = {
@@ -231,48 +174,6 @@ in
       };
     };
 
-    systemd.services.nextcloud-startup = {
-      after = [ "network.target" ];
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        ExecStart = pkgs.writeScript "nextcloud-startup" ''
-          #! ${pkgs.bash}/bin/bash
-          NEXTCLOUD_PATH="/var/lib/nextcloud"
-
-          if (! test -e "''${NEXTCLOUD_PATH}" \
-                -o -e "''${NEXTCLOUD_PATH}/apps" \
-                -o -e "''${NEXTCLOUD_PATH}/config" \
-                -o -e "''${NEXTCLOUD_PATH}/data"); then
-            mkdir -p "''${NEXTCLOUD_PATH}/"{,apps,config,data}
-            chmod 700 /var/lib/nextcloud
-            chown -R www-data:www-data /var/lib/nextcloud
-          fi
-      '';
-      };
-      enable = true;
-    };
-
-    services.phpfpm.poolConfigs.nginx = ''
-      user = www-data
-      group = www-data
-      listen = /run/phpfpm/nginx
-      listen.owner = www-data
-      listen.group = www-data
-      pm = dynamic
-      pm.max_children = 5
-      pm.start_servers = 2
-      pm.min_spare_servers = 1
-      pm.max_spare_servers = 3
-      pm.max_requests = 500
-
-      env[NEXTCLOUD_CONFIG_DIR] = /var/lib/nextcloud/config
-      php_flag[display_errors] = off
-      php_admin_value[error_log] = /run/phpfpm/php-fpm.log
-      php_admin_flag[log_errors] = on
-      php_value[date.timezone] = "UTC"
-      php_value[upload_max_filesize] = 10G
-    '';
-
     services.coturn = {
       enable = true;
       lt-cred-mech = true;
@@ -284,32 +185,22 @@ in
       max-port = 65535;
     };
 
-    security.acme.certs =
-    let
-      commonAcmeConfig = {
-        webroot = "/var/www/challenges";
-        email = "r@rkm.id.au";
-        plugins = [
-          "account_key.json"
-          "cert.pem"
-          "chain.pem"
-          "fullchain.pem"
-          "key.pem"
-        ];
+    services.syncthing.enable = true;
+
+    security.acme.certs."matrix.rkm.id.au" = commonAcmeConfig // {
+      extraDomains = {
+        "turn.rkm.id.au" = null;
       };
-    in {
-      "nextcloud.rkm.id.au" = commonAcmeConfig // {
-        postRun = "systemctl reload-or-restart nginx";
-      };
-      "matrix.rkm.id.au" = commonAcmeConfig // {
-        extraDomains = {
-          "turn.rkm.id.au" = null;
-        };
-        postRun = "systemctl reload-or-restart nginx matrix-synapse";
-      };
+      postRun = "systemctl reload-or-restart nginx matrix-synapse";
     };
 
     services.postgresql.enable = true;
+
+    services.mysql = {
+      enable = true;
+      package = pkgs.mariadb;
+    };
+
     services.openssh.enable = true;
     services.fail2ban.enable = true;
 
@@ -334,6 +225,7 @@ in
         isNormalUser = false;
         group = "www-data";
         home = "/var/www";
+        useDefaultShell = true;
         createHome = true;
       };
     };
