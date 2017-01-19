@@ -16,6 +16,7 @@ in
     imports = [
      # ../../local/modules/module-list.nix
      ./nextcloud.nix
+     ./rsvp.fyi.nix
     ];
 
     boot = {
@@ -195,12 +196,6 @@ in
     };
 
     services.postgresql.enable = true;
-
-    services.mysql = {
-      enable = true;
-      package = pkgs.mariadb;
-    };
-
     services.openssh.enable = true;
     services.fail2ban.enable = true;
 
