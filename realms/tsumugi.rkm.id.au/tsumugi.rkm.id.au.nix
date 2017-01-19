@@ -53,6 +53,7 @@ in
         allowedUDPPortRanges = [
           { from = 49152; to = 65535; } # coturn
         ];
+        trustedInterfaces = [ "lo" ];
       };
     };
 

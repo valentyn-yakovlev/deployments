@@ -1,67 +1,86 @@
 { config, lib, pkgs, ... }:
+
 let
 
-documentRoot = "/var/www/rsvp.fyi";
-serverRoot = "/var/lib/rsvp.fyi";
-hostname = "rsvp.fyi";
-commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
-robotsTxt = pkgs.writeText "robots.txt" ''
-  User-agent: *
-  Disallow: /
-'';
-localPackages = (import ./../../local/pkgs/all-packages.nix) {
-  inherit config lib pkgs;
-};
+  secrets = import ./secrets.nix;
+  documentRoot = "/var/www/rsvp.fyi";
+  serverRoot = "/var/lib/rsvp.fyi";
+  hostname = "rsvp.fyi";
+  commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
+  robotsTxt = pkgs.writeText "robots.txt" ''
+    User-agent: *
+    Disallow: /
+  '';
+  localPackages = (import ./../../local/pkgs/all-packages.nix) {
+    inherit config lib pkgs;
+  };
+  pgUser = "rsvp.fyi";
+  pgDatabase = "rsvp.fyi";
+  pgPassword = secrets.pgPassword;
+  pgPort = "5432";
+  pgHost = "127.0.0.1";
+  serverHost = "127.0.0.1";
+  serverPassword = secrets.serverPassword;
+  serverPort = 12344;
+  serverPkg = localPackages.nodePackages."rsvp.fyi-server";
 
 in {
-  security.acme.certs."rsvp.fyi" = commonAcmeConfig // {
-    extraDomains = {
-      "www.rsvp.fyi" = null;
+  services.nginx.virtualHosts =
+    let
+      virtualhostConfig = {
+        enableSSL = true;
+        forceSSL = true;
+        enableACME = true;
+        locations = {
+          "/robots.txt" = {
+            extraConfig = ''
+              alias ${robotsTxt};
+            '';
+          };
+          "/api" = {
+            proxyPass = "http://127.0.0.1:12344";
+          };
+          "/" = {
+            root = documentRoot;
+            index = "index.html";
+          };
+        };
+      };
+    in {
+      "${hostname}" = virtualhostConfig;
+      "staging.${hostname}" = virtualhostConfig;
+      "www.${hostname}" = {
+        enableACME = true;
+        enableSSL = true;
+        locations = {
+          "/" = {
+            extraConfig = "return 301 https://${hostname};";
+          };
+        };
+      };
     };
-    postRun = "systemctl reload-or-restart nginx";
-  };
-
-  services.nginx.virtualHosts."${hostname}" = {
-    enableSSL = true;
-    forceSSL = true;
-    sslCertificate = "/var/lib/acme/${hostname}/fullchain.pem";
-    sslCertificateKey = "/var/lib/acme/${hostname}/key.pem";
-    locations = {
-      "/robots.txt" = {
-        extraConfig = ''
-          alias ${robotsTxt};
-        '';
-      };
-      "/api" = {
-        proxyPass = "localhost:12344";
-      };
-      "/" = {
-        root = documentRoot;
-        index = "index.html";
-      };
-    };
-  };
 
   services.postgresql.enable = true;
 
   systemd.services."${hostname}-server" = {
      after = [ "network.target" "nginx.service" "postgresql.service" ];
+     environment = {
+       PGUSER = "${pgUser}";
+       PGDATABASE = "${pgDatabase}";
+       PGPASSWORD = "${pgPassword}";
+       PGPORT = "${toString pgPort}";
+       PGHOST = "${pgHost}";
+       PGMAXCLIENTS = "10";
+       PGIDLETIMEOUTMILLIS = "30000";
+       HOST = "${serverHost}";
+       PORT = "${toString serverPort}";
+       PASSWORD = "${serverPassword}";
+     };
      serviceConfig = {
+       Type = "simple";
        Restart = "always";
        RestartSec = "300";
-       ExecStart = pkgs.writeScript "${hostname}-server-startup" ''
-         PGUSER="rsvpfyi" \
-           PGDATABASE="rsvp.fyi" \
-           PGPASSWORD="hunter2" \
-           PGPORT="5432" \
-           PGHOST="127.0.0.1" \
-           PGMAXCLIENTS="10" \
-           PGIDLETIMEOUTMILLIS="30000" \
-           HOST="127.0.0.1" \
-           PORT="12344" \
-           PASSWORD="hunter2" \
-           ${localPackages.rsvp-fyi-server}/bin/index.js
-         '';
+       ExecStart = "${serverPkg}/bin/rsvp.fyi-server";
      };
      enable = true;
   };
