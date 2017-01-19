@@ -22,7 +22,8 @@ let
   serverHost = "127.0.0.1";
   serverPassword = secrets.serverPassword;
   serverPort = 12344;
-  serverPkg = localPackages.nodePackages."rsvp.fyi-server";
+  clientPkg = localPackages.rsvp-fyi."rsvp.fyi-client";
+  serverPkg = localPackages.rsvp-fyi."rsvp.fyi-server";
 
 in {
   services.nginx.virtualHosts =
@@ -41,7 +42,7 @@ in {
             proxyPass = "http://127.0.0.1:12344";
           };
           "/" = {
-            root = documentRoot;
+            root = "${clientPkg}";
             index = "index.html";
           };
         };
@@ -52,9 +53,10 @@ in {
       "www.${hostname}" = {
         enableACME = true;
         enableSSL = true;
+        forceSSL = true;
         locations = {
           "/" = {
-            extraConfig = "return 301 https://${hostname};";
+            extraConfig = "return 301 $scheme://${hostname}$request_uri;";
           };
         };
       };
@@ -82,6 +84,7 @@ in {
        RestartSec = "300";
        ExecStart = "${serverPkg}/bin/rsvp.fyi-server";
      };
+     reloadIfChanged = true;
      enable = true;
   };
 }
