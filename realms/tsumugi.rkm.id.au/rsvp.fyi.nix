@@ -84,7 +84,6 @@ in {
        RestartSec = "300";
        ExecStart = "${serverPkg}/bin/rsvp.fyi-server";
      };
-     reloadIfChanged = true;
      enable = true;
   };
 }
