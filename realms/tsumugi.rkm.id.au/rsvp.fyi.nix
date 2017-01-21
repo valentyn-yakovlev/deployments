@@ -43,7 +43,7 @@ in {
           };
           "/" = {
             root = "${clientPkg}";
-            index = "index.html";
+            extraConfig = "try_files $uri $uri/ /index.html;";
           };
         };
       };
