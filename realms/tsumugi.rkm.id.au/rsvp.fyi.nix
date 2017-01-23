@@ -6,7 +6,6 @@ let
   documentRoot = "/var/www/rsvp.fyi";
   serverRoot = "/var/lib/rsvp.fyi";
   hostname = "rsvp.fyi";
-  commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
   robotsTxt = pkgs.writeText "robots.txt" ''
     User-agent: *
     Disallow: /

@@ -17,6 +17,7 @@ in
      # ../../local/modules/module-list.nix
      ./nextcloud.nix
      ./rsvp.fyi.nix
+     ./syncthing.nix
     ];
 
     boot = {
@@ -186,8 +187,6 @@ in
       min-port = 49152;
       max-port = 65535;
     };
-
-    services.syncthing.enable = true;
 
     security.acme.certs."matrix.rkm.id.au" = commonAcmeConfig // {
       extraDomains = {
