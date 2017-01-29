@@ -35,7 +35,7 @@ in rec {
     group = "users";
     dataDir = "/var/lib/syncthing";
     enable = true;
-    useInotify = true;
+    useInotify = false;
   };
 
   systemd.services.syncthing-startup = {

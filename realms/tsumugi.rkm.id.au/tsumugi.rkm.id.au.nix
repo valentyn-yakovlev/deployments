@@ -2,7 +2,7 @@
 
 let
 
-  sshKeys = import ./../../common/ssh-keys.nix;
+  sshKeys = import ./../../local/common/ssh-keys.nix;
   secrets = import ./secrets.nix;
   commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
 
