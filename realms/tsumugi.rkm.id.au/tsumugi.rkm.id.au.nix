@@ -15,9 +15,11 @@ in
   {
     imports = [
      # ../../local/modules/module-list.nix
+     ./dhparams.nix
      ./nextcloud.nix
      ./rsvp.fyi.nix
      ./syncthing.nix
+     ./mail-server.nix
     ];
 
     boot = {
@@ -38,7 +40,7 @@ in
     };
 
     networking = {
-      hostName = "tsumugi";
+      hostName = "tsumugi.rkm.id.au";
       firewall = {
         enable = true;
         allowedTCPPorts = [
@@ -188,11 +190,13 @@ in
       max-port = 65535;
     };
 
-    security.acme.certs."matrix.rkm.id.au" = commonAcmeConfig // {
-      extraDomains = {
-        "turn.rkm.id.au" = null;
+    security.acme.certs = {
+      "matrix.rkm.id.au" = commonAcmeConfig // {
+        extraDomains = {
+          "turn.rkm.id.au" = null;
+        };
+        postRun = "systemctl reload-or-restart nginx matrix-synapse";
       };
-      postRun = "systemctl reload-or-restart nginx matrix-synapse";
     };
 
     services.postgresql.enable = true;
