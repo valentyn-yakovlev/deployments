@@ -44,11 +44,14 @@ in
       firewall = {
         enable = true;
         allowedTCPPorts = [
-          22
-          80
-          443
+          22 # ssh, sftp
+          25 # smtp
+          80 # http
+          443 # https
+          587 # smtps
           3478 # coturn
           8448 # matrix
+          993 # imaps
         ];
         allowedUDPPorts = [
           3478 # coturn
@@ -205,20 +208,31 @@ in
 
     programs.zsh.enable = true;
 
-    users.extraUsers = {
+    users.mutableUsers = false;
+
+    users.users = {
       root = {
         openssh.authorizedKeys.keys = [
          sshKeys.rkm
        ];
-      };
+       inherit (secrets.users.users.root) initialPassword;
+     };
       eqyiel = {
         isNormalUser = true;
-        initialPassword = "hunter2";
         extraGroups = [ "wheel" "systemd-journal" ];
         shell = pkgs.zsh;
         openssh.authorizedKeys.keys = [
           sshKeys.rkm
         ];
+        inherit (secrets.users.users.eqyiel) initialPassword;
+      };
+      r = { # for sending and receiving email
+        isNormalUser = true;
+        shell = pkgs.zsh;
+        openssh.authorizedKeys.keys = [
+          sshKeys.rkm
+        ];
+        inherit (secrets.users.users.r) initialPassword;
       };
       www-data = {
         isNormalUser = false;

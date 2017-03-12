@@ -1,17 +1,17 @@
 # Don't forget to open ports 993 (imaps), 25 (smtp) and 587 (smtps)!
 
-# todo: run sa-update periodically
-
 { config, lib, pkgs, ... }:
 let
+  virtualMailUser = "mail";
+  virtualMailGroup = "mail";
+  virtualMailUserHome = "/var/lib/mail";
+  hostname = "rkm.id.au";
+  commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
+  opendkimStateDir = "/etc/nixos/opendkim";
+  opendkimRuntimeDir = "/run/opendkim";
 
-virtualMailUser = "vmail";
-virtualMailGroup = "vmail";
-hostname = "rkm.id.au";
-commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
-opendkimStateDir = "/etc/nixos/opendkim";
-opendkimRuntimeDir = "/run/opendkim";
-
+  # Mail coming from these users will be marked \\seen.
+  bccSelfUsers = [ "r@${hostname}" ];
 in rec {
    services.postfix =
    let
@@ -27,16 +27,19 @@ in rec {
      enable = true;
      user = virtualMailUser;
      group = virtualMailGroup;
-     domain = "mail.${hostname}";
+     domain = hostname;
      hostname = "mail.${hostname}";
      sslCACert = "/var/lib/acme/mail.${hostname}/fullchain.pem";
      sslCert = "/var/lib/acme/mail.${hostname}/cert.pem";
      sslKey = "/var/lib/acme/mail.${hostname}/key.pem";
      recipientDelimiter = "+";
-     destination = [ "yourdomain.tld" "mail.yourdomain.tld" ];
+     destination = [ "${hostname}" "mail.${hostname}" ];
+     rootAlias = "r";
+     postmasterAlias = "r";
+     extraAliases = "eqyiel: r";
      virtual = ''
-       onealias@yourdomain.tld youruser
-       anotheralias@yourdomain.tld youruser
+       root@${hostname} r@${hostname}
+       @${hostname} r@${hostname}
     '';
     extraMasterConf = ''
       smtp  inet  n - n - 1 postscreen
@@ -61,6 +64,9 @@ in rec {
         -o cleanup_service_name=submission-header-cleanup
       submission-header-cleanup unix  n - n - 0 cleanup
         -o header_checks=pcre:${smtpHeaderChecks}
+      dovecot unix  - n n - - pipe
+        flags=DRhu user=${virtualMailUser}:${virtualMailGroup} argv=${pkgs.spamassassin}/bin/spamc -f -u spamd -e ${pkgs.dovecot}/libexec/dovecot/dovecot-lda -f ''${sender} -d ''${recipient}
+
     '';
      extraConfig = ''
        maximal_queue_lifetime = 1h
@@ -74,32 +80,35 @@ in rec {
        smtp_tls_security_level = dane
        smtp_dns_support_level = dnssec
        smtp_tls_session_cache_database = btree:''${data_directory}/smtp_scache
-       smtp_tls_protocols = !SSLv2, !SSLv3
+       smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
        smtp_tls_ciphers = high
        smtpd_tls_security_level = may
-       smtpd_tls_protocols = !SSLv2, !SSLv3
+       smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
        smtpd_tls_ciphers = high
        smtpd_tls_eecdh_grade = strong
-       smtpd_tls_dh1024_param_file=/var/lib/dhparams/mail.${hostname}/dhparams.pem
+       smtpd_tls_dh1024_param_file=/var/lib/dhparams/mail.${hostname}.pem
        smtpd_tls_session_cache_database = btree:''${data_directory}/smtpd_scache
 
-       smtpd_relay_restrictions =
-                                       reject_non_fqdn_recipient
-                                       reject_unknown_recipient_domain
-                                       permit_mynetworks
-                                       reject_unauth_destination
-       smtpd_client_restrictions =     permit_mynetworks
-                                       reject_unknown_client_hostname
+       # See ciphers for outbound connections
+       smtp_tls_loglevel = 1
+       # See ciphers for inbound connections
+       smtpd_tls_loglevel = 1
+
+       smtpd_relay_restrictions =  reject_non_fqdn_recipient
+                                   reject_unknown_recipient_domain
+                                   permit_mynetworks
+                                   reject_unauth_destination
+       smtpd_client_restrictions = permit_mynetworks
+                                   reject_unknown_client_hostname
        smtpd_helo_required = yes
-       smtpd_helo_restrictions =   permit_mynetworks
-                                   reject_invalid_helo_hostname
-                                   reject_non_fqdn_helo_hostname
-                                   reject_unknown_helo_hostname
+       smtpd_helo_restrictions = permit_mynetworks
+                                 reject_invalid_helo_hostname
+                                 reject_non_fqdn_helo_hostname
+                                 reject_unknown_helo_hostname
        smtpd_data_restrictions = reject_unauth_pipelining
-
-
        mailbox_transport = lmtp:inet:127.0.0.1:8458
 
+       # OpenDKIM
        milter_default_action = accept
        milter_protocol = 2
        smtpd_milters = unix:${opendkimRuntimeDir}/opendkim.sock
@@ -123,7 +132,7 @@ in rec {
   };
 
   security.acme.certs."mail.${hostname}" = commonAcmeConfig // {
-    postRun = "systemctl reload-or-restart nginx";
+    postRun = "systemctl reload-or-restart postfix dovecot2";
   };
 
   security.dhparams.params."mail.${hostname}" = 2048;
@@ -131,16 +140,16 @@ in rec {
   services.dovecot2 = {
     enable = true;
     enableImap = true;
-    enableLmtp = false;
-    enablePAM = false;
+    enableLmtp = true;
+    enablePAM = true;
     enablePop3 = false;
     mailGroup = virtualMailGroup;
-    mailLocation = "maildir:/var/mail/%d/%u";
+    mailLocation = "maildir:~/mail:LAYOUT=fs:INBOX=~/mail/INBOX:UTF-8:INDEX=~/mail/.index:CONTROL=~/mail/.control";
     mailUser = virtualMailUser;
-    modules = [];
+    modules = [ pkgs.dovecot_pigeonhole ];
     protocols = [ "sieve" ];
-    showPAMFailure = false;
-    sieveScripts = {
+    showPAMFailure = true;
+    sieveScripts = { # http://wiki2.dovecot.org/Pigeonhole/Sieve/Configuration#Executing_Multiple_Scripts_Sequentially
       before = pkgs.writeScript "before.sieve" ''
         require "fileinto";
         if header :contains "X-Spam-Flag" "YES" {
@@ -152,10 +161,55 @@ in rec {
           keep;
         }
       '';
+      before2 = let
+        body = lib.concatMapStringsSep "\n" (x: ''
+          if envelope "from" "${x}" {
+            setflag "\\Seen";
+            # Unfortunately setflag doesn't work with implicit or explicit keep.
+            # Workaround is to file into INBOX.
+            fileinto "INBOX";
+          }
+        '') bccSelfUsers;
+      in pkgs.writeScript "before2.sieve" ''
+        # Hack to make mail threading more pleasant.  Configure mail client to
+        # BCC-self, those mails will get marked as read.
+        require ["envelope", "imap4flags", "fileinto"];
+        ${body}
+      '';
     };
     extraConfig = ''
+      default_internal_user = dovecot2
+      auth_mechanisms = plain login
+      auth_username_format = %Ln
+      disable_plaintext_auth = yes
+      ssl = required
+      ssl_cipher_list = EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!IDEA:!ECDSA:kEDH:CAMELLIA128-SHA:AES128-SHA
+      ssl_dh_parameters_length = 2048
+      ssl_prefer_server_ciphers = yes
+      ssl_protocols = !SSLv2 !SSLv3 !TLSv1 !TLSv1.1
+      mail_privileged_group = ${virtualMailGroup}
+      verbose_ssl = yes
+      mail_debug = yes
+
+      protocol lmtp {
+        mail_plugins = $mail_plugins sieve
+      }
+
+      service lmtp {
+        inet_listener {
+          port = 8458
+        }
+      }
+
+      service auth {
+        inet_listener {
+          port = 2847
+        }
+      }
+
       namespace inbox {
         inbox = yes
+        separator = /
 
         mailbox Spam {
             auto = subscribe
@@ -175,6 +229,11 @@ in rec {
         mailbox Sent {
             auto = subscribe
             special_use = \Sent
+        }
+
+        mailbox Archive {
+          auto = subscribe
+          special_use = \Archive
         }
       }
     '';
@@ -257,7 +316,7 @@ in rec {
   };
 
   users.users."${virtualMailUser}" = {
-    home = "/var/mail";
+    home = virtualMailUserHome;
     createHome = true;
     group = virtualMailGroup;
   };
