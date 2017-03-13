@@ -162,8 +162,8 @@ in rec {
         }
       '';
       before2 = let
-        body = lib.concatMapStringsSep "\n" (x: ''
-          if envelope "from" "${x}" {
+        body = lib.concatMapStringsSep "elsif" (x: ''
+          envelope "from" "${x}" {
             setflag "\\Seen";
             # Unfortunately setflag doesn't work with implicit or explicit keep.
             # Workaround is to file into INBOX.
@@ -174,7 +174,13 @@ in rec {
         # Hack to make mail threading more pleasant.  Configure mail client to
         # BCC-self, those mails will get marked as read.
         require ["envelope", "imap4flags", "fileinto"];
-        ${body}
+        if ${body}
+      '';
+      before3 = pkgs.writeScript "before3.sieve" ''
+        require ["fileinto", "body", "mailbox"];
+        if body :contains ["Unsubscribe", "unsubscribe"] {
+          fileinto :create "Marketing Spam";
+        }
       '';
     };
     extraConfig = ''
@@ -212,28 +218,32 @@ in rec {
         separator = /
 
         mailbox Spam {
-            auto = subscribe
-            special_use = \Junk
+          auto = subscribe
+          special_use = \Junk
         }
 
         mailbox Trash {
-            auto = subscribe
-            special_use = \Trash
+          auto = subscribe
+          special_use = \Trash
         }
 
         mailbox Drafts {
-            auto = subscribe
-            special_use = \Drafts
+          auto = subscribe
+          special_use = \Drafts
         }
 
         mailbox Sent {
-            auto = subscribe
-            special_use = \Sent
+          auto = subscribe
+          special_use = \Sent
         }
 
         mailbox Archive {
           auto = subscribe
           special_use = \Archive
+        }
+
+        mailbox "Marketing Spam" {
+          auto = subscribe
         }
       }
     '';
