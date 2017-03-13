@@ -5,13 +5,44 @@ let
   virtualMailUser = "mail";
   virtualMailGroup = "mail";
   virtualMailUserHome = "/var/lib/mail";
+  virtualMailUserUID = 1004;
+  virtualMailUserGID = 497;
   hostname = "rkm.id.au";
   commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
   opendkimStateDir = "/etc/nixos/opendkim";
   opendkimRuntimeDir = "/run/opendkim";
-
-  # Mail coming from these users will be marked \\seen.
-  bccSelfUsers = [ "r@${hostname}" ];
+  bccSelfUsers = [ "r@rkm.id.au" ];
+  domains = {
+    "rkm.id.au" = {
+      users = [{
+        name = "r";
+        aliases = [ "root" ];
+        catchAll = true;
+        bccSelf = true;
+      }];
+    };
+    "huttriverprovince.com.au" = {
+      users = [{ name = "info"; aliases = []; }];
+    };
+  };
+  mapDomainsToUsers =
+    (domains: (lib.flatten (lib.mapAttrsToList
+      (domain: props: map ({
+        name,
+        # Other addresses that reach this mailbox.
+        aliases ? [],
+        # Should this be the catch-all address for this domain?
+        # TODO: make sure this isn't set for more than one user.
+        catchAll ? false,
+         # If this is true, mark mail coming from these users as \\Seen.
+         # This is useful if you configure your mail client to BCC self for
+         # nicer threading.
+        bccSelf ? false,
+        ...
+      }: {
+        inherit name aliases catchAll domain bccSelf;
+        address = "${name}@${domain}";
+      }) props.users) domains)));
 in rec {
    services.postfix =
    let
@@ -41,6 +72,27 @@ in rec {
        root@${hostname} r@${hostname}
        @${hostname} r@${hostname}
     '';
+    mapFiles = {
+      virtual_mailbox_maps = pkgs.writeText "virtual_mailbox_maps"
+        (lib.concatMapStringsSep "\n"
+          ({ address, domain, ... }: "${address} ${domain}/${address}")
+            (mapDomainsToUsers domains));
+      virtual_mailbox_domains = pkgs.writeText "virtual_mailbox_domains"
+        (builtins.concatStringsSep "\n"
+          (lib.mapAttrsToList (domain: _: domain) domains));
+    };
+    aliasFiles = {
+      virtual_alias_maps = pkgs.writeText "virtual_alias_maps"
+      (builtins.concatStringsSep "\n"
+        (lib.concatMap (user:
+          (map (alias: "${alias}@${user.domain} ${user.address}") user.aliases)
+           ++ (if user.catchAll then [
+             "@${user.domain} ${user.address}"
+           ] else []))
+          (builtins.filter (user:
+            (builtins.length user.aliases) > 0 || user.catchAll)
+              (mapDomainsToUsers domains))));
+    };
     extraMasterConf = ''
       smtp  inet  n - n - 1 postscreen
         -o smtpd_sasl_auth_enable=no
@@ -66,9 +118,19 @@ in rec {
         -o header_checks=pcre:${smtpHeaderChecks}
       dovecot unix  - n n - - pipe
         flags=DRhu user=${virtualMailUser}:${virtualMailGroup} argv=${pkgs.spamassassin}/bin/spamc -f -u spamd -e ${pkgs.dovecot}/libexec/dovecot/dovecot-lda -f ''${sender} -d ''${recipient}
-
     '';
      extraConfig = ''
+       virtual_mailbox_base = ${virtualMailUserHome}
+       virtual_mailbox_domains = hash:/etc/postfix/virtual_mailbox_domains
+       virtual_mailbox_maps = hash:/etc/postfix/virtual_mailbox_maps
+       virtual_alias_maps = hash:/etc/postfix/virtual_alias_maps
+       virtual_minimum_uid = ${virtualMailUserUID}
+       virtual_uid_maps = static:${virtualMailUserUID}
+       virtual_gid_maps = static:${vitualMailUserGID}
+       virtual_transport = dovecot
+       dovecot_destination_recipient_limit = 1
+       mailbox_size_limit = 0
+
        maximal_queue_lifetime = 1h
        bounce_queue_lifetime = 1h
        maximal_backoff_time = 15m
@@ -137,6 +199,25 @@ in rec {
 
   security.dhparams.params."mail.${hostname}" = 2048;
 
+  systemd.services.dovecot2-startup = {
+    after = [ "network.target" ];
+    wantedBy = [ "multi-user.target" ];
+    requiredBy = [ "dovecot2.service" ];
+    serviceConfig = {
+      ExecStart = pkgs.writeScript "dovecot2-startup" ''
+        #! ${pkgs.bash}/bin/bash
+        if (! test -d "${virtualMailUserHome}"); then
+          mkdir -p "${virtualMailUserHome}"
+          chown ${virtualMailUser}:${virtualMailGroup}
+          chmod 700 ${virtualMailUserHome}
+        fi
+
+
+      '';
+    };
+    enable = true;
+  };
+
   services.dovecot2 = {
     enable = true;
     enableImap = true;
@@ -162,14 +243,16 @@ in rec {
         }
       '';
       before2 = let
-        body = lib.concatMapStringsSep "elsif" (x: ''
+        body = lib.concatMapStringsSep "elsif " (x: ''
           envelope "from" "${x}" {
             setflag "\\Seen";
             # Unfortunately setflag doesn't work with implicit or explicit keep.
             # Workaround is to file into INBOX.
             fileinto "INBOX";
           }
-        '') bccSelfUsers;
+        '') (map ({ address, ... }: address)
+              (lib.filter ({ bccSelf, ... }: bccSelf)
+                (mapDomainsToUsers domains)));
       in pkgs.writeScript "before2.sieve" ''
         # Hack to make mail threading more pleasant.  Configure mail client to
         # BCC-self, those mails will get marked as read.
@@ -194,24 +277,62 @@ in rec {
       ssl_prefer_server_ciphers = yes
       ssl_protocols = !SSLv2 !SSLv3 !TLSv1 !TLSv1.1
       mail_privileged_group = ${virtualMailGroup}
+
       verbose_ssl = yes
       mail_debug = yes
+      auth_debug = yes
+      auth_debug_passwords = yes
 
-      protocol lmtp {
-        mail_plugins = $mail_plugins sieve
+      mail_uid = ${virtualMailUserUID}
+      mail_uid = ${virtualMailUserGID}
+      first_valid_uid = ${virtualMailUserUID}
+
+      lda_mailbox_autosubscribe = yes
+      lda_mailbox_autocreate = yes
+
+      passdb {
+        args = /var/lib/mail/%d/shadow
+        driver = passwd-file
       }
 
-      service lmtp {
-        inet_listener {
-          port = 8458
-        }
+      userdb {
+        args = /var/lib/mail/%d/passwd
+        driver = passwd-file
       }
 
       service auth {
-        inet_listener {
-          port = 2847
+        unix_listener /var/spool/postfix/private/auth {
+          group = mail
+          mode = 0660
+          user = mail
+        }
+        unix_listener auth-master {
+          group = mail
+          mode = 0660
+          user = mail
         }
       }
+
+      protocol lda {
+        auth_socket_path = /var/run/dovecot/auth-master
+        mail_plugins = $mail_plugins sieve
+      }
+
+      # protocol lmtp {
+      #   mail_plugins = $mail_plugins sieve
+      # }
+
+      # service lmtp {
+      #   inet_listener {
+      #     port = 8458
+      #   }
+      # }
+
+      # service auth {
+      #   inet_listener {
+      #     port = 2847
+      #   }
+      # }
 
       namespace inbox {
         inbox = yes
@@ -328,6 +449,8 @@ in rec {
   users.users."${virtualMailUser}" = {
     home = virtualMailUserHome;
     createHome = true;
+    uid = virtualMailUserUID;
+    gid = virtualMailUserGID;
     group = virtualMailGroup;
   };
 
