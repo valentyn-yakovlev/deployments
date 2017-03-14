@@ -226,14 +226,6 @@ in
         ];
         inherit (secrets.users.users.eqyiel) initialPassword;
       };
-      r = { # for sending and receiving email
-        isNormalUser = true;
-        shell = pkgs.zsh;
-        openssh.authorizedKeys.keys = [
-          sshKeys.rkm
-        ];
-        inherit (secrets.users.users.r) initialPassword;
-      };
       www-data = {
         isNormalUser = false;
         group = "www-data";

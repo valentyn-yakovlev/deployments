@@ -1,9 +1,16 @@
 # Don't forget to open ports 993 (imaps), 25 (smtp) and 587 (smtps)!
+#
+# Heavily inspired by the following:
+# https://git.schneefux.xyz/schneefux/blog/src/master/content/tech/nixos-mailserver.md
+# http://www.akadia.com/services/postfix_separate_mailboxes.html
+# https://tech.tiq.cc/2014/02/how-to-set-up-an-email-server-with-postfix-and-dovecot-without-mysql-on-debian-7/
 
 { config, lib, pkgs, ... }:
 let
   virtualMailUser = "mail";
   virtualMailGroup = "mail";
+  mtaUser = "postfix";
+  mtaGroup = "postfix";
   virtualMailUserHome = "/var/lib/mail";
   virtualMailUserUID = 1004;
   virtualMailUserGID = 497;
@@ -11,7 +18,7 @@ let
   commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
   opendkimStateDir = "/etc/nixos/opendkim";
   opendkimRuntimeDir = "/run/opendkim";
-  bccSelfUsers = [ "r@rkm.id.au" ];
+  debug = true;
   domains = {
     "rkm.id.au" = {
       users = [{
@@ -22,7 +29,10 @@ let
       }];
     };
     "huttriverprovince.com.au" = {
-      users = [{ name = "info"; aliases = []; }];
+      users = [{
+        name = "info";
+        aliases = [];
+      }];
     };
   };
   mapDomainsToUsers =
@@ -38,11 +48,16 @@ let
          # This is useful if you configure your mail client to BCC self for
          # nicer threading.
         bccSelf ? false,
+        password ? "hunter2",
         ...
       }: {
-        inherit name aliases catchAll domain bccSelf;
+        inherit aliases bccSelf catchAll domain name password;
         address = "${name}@${domain}";
       }) props.users) domains)));
+
+  withPasswordFromSecretsFile = map (user@{ address, ... }: user // {
+    password = (import ./secrets.nix).mailUsers."${address}".password;
+  });
 in rec {
    services.postfix =
    let
@@ -56,42 +71,37 @@ in rec {
      '';
    in {
      enable = true;
-     user = virtualMailUser;
-     group = virtualMailGroup;
+     user = mtaUser;
+     group = mtaGroup;
      domain = hostname;
      hostname = "mail.${hostname}";
      sslCACert = "/var/lib/acme/mail.${hostname}/fullchain.pem";
      sslCert = "/var/lib/acme/mail.${hostname}/cert.pem";
      sslKey = "/var/lib/acme/mail.${hostname}/key.pem";
      recipientDelimiter = "+";
-     destination = [ "${hostname}" "mail.${hostname}" ];
-     rootAlias = "r";
-     postmasterAlias = "r";
-     extraAliases = "eqyiel: r";
-     virtual = ''
-       root@${hostname} r@${hostname}
-       @${hostname} r@${hostname}
-    '';
+     destination = [ "mail.${hostname}" ];
+     # rootAlias = "r";
+     # postmasterAlias = "r";
+     # extraAliases = "eqyiel: r";
+    #  virtual = ''
+    #    root@${hostname} r@${hostname}
+    #    @${hostname} r@${hostname}
+    # '';
     mapFiles = {
       virtual_mailbox_maps = pkgs.writeText "virtual_mailbox_maps"
         (lib.concatMapStringsSep "\n"
           ({ address, domain, ... }: "${address} ${domain}/${address}")
             (mapDomainsToUsers domains));
-      virtual_mailbox_domains = pkgs.writeText "virtual_mailbox_domains"
-        (builtins.concatStringsSep "\n"
-          (lib.mapAttrsToList (domain: _: domain) domains));
-    };
-    aliasFiles = {
       virtual_alias_maps = pkgs.writeText "virtual_alias_maps"
-      (builtins.concatStringsSep "\n"
-        (lib.concatMap (user:
-          (map (alias: "${alias}@${user.domain} ${user.address}") user.aliases)
-           ++ (if user.catchAll then [
-             "@${user.domain} ${user.address}"
-           ] else []))
-          (builtins.filter (user:
-            (builtins.length user.aliases) > 0 || user.catchAll)
-              (mapDomainsToUsers domains))));
+        (builtins.concatStringsSep "\n"
+          (lib.concatMap (user:
+            (map (alias: "${alias}@${user.domain} ${user.address}") user.aliases)
+             ++ (if user.catchAll then [
+               "@${user.domain} ${user.address}"
+             ] else []))
+            (builtins.filter (user:
+              (builtins.length user.aliases) > 0 || user.catchAll)
+                (mapDomainsToUsers domains))));
     };
     extraMasterConf = ''
       smtp  inet  n - n - 1 postscreen
@@ -105,8 +115,10 @@ in rec {
         -o smtpd_tls_security_level=encrypt
         -o smtpd_sasl_auth_enable=yes
         -o smtpd_sasl_type=dovecot
-        -o smtpd_sasl_path=inet:127.0.0.1:2847
+        -o smtpd_sasl_path=private/auth
         -o smtpd_sasl_security_options=noanonymous
+        -o smtpd_sasl_tls_security_options=noanonymous
+        -o smtpd_tls_auth_only=yes
         -o smtpd_relay_restrictions=reject_non_fqdn_recipient,reject_unknown_recipient_domain,permit_mynetworks,permit_sasl_authenticated,reject
         -o smtpd_sender_restrictions=permit_mynetworks,reject_non_fqdn_sender,permit_sasl_authenticated,reject
         -o smtpd_client_restrictions=permit_mynetworks,permit_sasl_authenticated,reject
@@ -121,12 +133,12 @@ in rec {
     '';
      extraConfig = ''
        virtual_mailbox_base = ${virtualMailUserHome}
-       virtual_mailbox_domains = hash:/etc/postfix/virtual_mailbox_domains
+       virtual_mailbox_domains = ${(builtins.concatStringsSep ", " (lib.mapAttrsToList (domain: _: domain) domains))}
        virtual_mailbox_maps = hash:/etc/postfix/virtual_mailbox_maps
        virtual_alias_maps = hash:/etc/postfix/virtual_alias_maps
-       virtual_minimum_uid = ${virtualMailUserUID}
-       virtual_uid_maps = static:${virtualMailUserUID}
-       virtual_gid_maps = static:${vitualMailUserGID}
+       virtual_minimum_uid = ${toString virtualMailUserUID}
+       virtual_uid_maps = static:${toString virtualMailUserUID}
+       virtual_gid_maps = static:${toString virtualMailUserGID}
        virtual_transport = dovecot
        dovecot_destination_recipient_limit = 1
        mailbox_size_limit = 0
@@ -148,8 +160,12 @@ in rec {
        smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
        smtpd_tls_ciphers = high
        smtpd_tls_eecdh_grade = strong
-       smtpd_tls_dh1024_param_file=/var/lib/dhparams/mail.${hostname}.pem
+       smtpd_tls_dh1024_param_file = /var/lib/dhparams/mail.${hostname}.pem
        smtpd_tls_session_cache_database = btree:''${data_directory}/smtpd_scache
+
+       smtpd_sasl_auth_enable = yes
+       smtpd_sasl_type = dovecot
+       smtpd_sasl_path = private/auth
 
        # See ciphers for outbound connections
        smtp_tls_loglevel = 1
@@ -168,7 +184,6 @@ in rec {
                                  reject_non_fqdn_helo_hostname
                                  reject_unknown_helo_hostname
        smtpd_data_restrictions = reject_unauth_pipelining
-       mailbox_transport = lmtp:inet:127.0.0.1:8458
 
        # OpenDKIM
        milter_default_action = accept
@@ -203,7 +218,35 @@ in rec {
     after = [ "network.target" ];
     wantedBy = [ "multi-user.target" ];
     requiredBy = [ "dovecot2.service" ];
-    serviceConfig = {
+    serviceConfig = let
+      createPerDomainPasswdAndShadowFiles = lib.concatMapStringsSep "\n"
+        (domain: ''
+          test -d "${virtualMailUserHome}/${domain}" \
+            || mkdir -p "${virtualMailUserHome}/${domain}" \
+            && chown ${virtualMailUser}:${virtualMailGroup} \
+              "${virtualMailUserHome}/${domain}"
+
+          test -f "${virtualMailUserHome}/${domain}/passwd" \
+            && rm "${virtualMailUserHome}/${domain}/passwd"
+          touch "${virtualMailUserHome}/${domain}/passwd"
+          chown ${virtualMailUser}:${virtualMailGroup} \
+            ${virtualMailUserHome}/${domain}/passwd
+          chmod 700 ${virtualMailUserHome}/${domain}/passwd
+          test -f "${virtualMailUserHome}/${domain}/shadow" \
+            && rm "${virtualMailUserHome}/${domain}/shadow"
+          touch "${virtualMailUserHome}/${domain}/shadow"
+          chown ${virtualMailUser}:${virtualMailGroup} \
+            ${virtualMailUserHome}/${domain}/shadow
+          chmod 700 ${virtualMailUserHome}/${domain}/shadow
+        '') (lib.mapAttrsToList (domain: _: domain) domains);
+      addUsersToPerDomainPasswdAndShadowFiles = lib.concatMapStringsSep "\n"
+        ({ address, domain, password, ...}: ''
+          echo "${address}::${toString virtualMailUserUID}:${toString virtualMailUserGID}::${virtualMailUserHome}/${domain}/${address}" >> \
+            "${virtualMailUserHome}/${domain}/passwd"
+          echo "${address}:$(${pkgs.dovecot}/bin/doveadm pw -p ${lib.escapeShellArg password})" >> \
+            "${virtualMailUserHome}/${domain}/shadow"
+        '') (withPasswordFromSecretsFile (mapDomainsToUsers domains));
+    in {
       ExecStart = pkgs.writeScript "dovecot2-startup" ''
         #! ${pkgs.bash}/bin/bash
         if (! test -d "${virtualMailUserHome}"); then
@@ -212,7 +255,8 @@ in rec {
           chmod 700 ${virtualMailUserHome}
         fi
 
-
+        ${createPerDomainPasswdAndShadowFiles}
+        ${addUsersToPerDomainPasswdAndShadowFiles}
       '';
     };
     enable = true;
@@ -221,15 +265,15 @@ in rec {
   services.dovecot2 = {
     enable = true;
     enableImap = true;
-    enableLmtp = true;
-    enablePAM = true;
+    enableLmtp = false;
+    enablePAM = false;
     enablePop3 = false;
     mailGroup = virtualMailGroup;
-    mailLocation = "maildir:~/mail:LAYOUT=fs:INBOX=~/mail/INBOX:UTF-8:INDEX=~/mail/.index:CONTROL=~/mail/.control";
+    mailLocation = "maildir:${virtualMailUserHome}/%d/%u:LAYOUT=fs:INBOX=${virtualMailUserHome}/%d/%u/INBOX:UTF-8:INDEX=${virtualMailUserHome}/%d/%u/.index:CONTROL=${virtualMailUserHome}/%d/%u/.control";
     mailUser = virtualMailUser;
     modules = [ pkgs.dovecot_pigeonhole ];
     protocols = [ "sieve" ];
-    showPAMFailure = true;
+    showPAMFailure = false;
     sieveScripts = { # http://wiki2.dovecot.org/Pigeonhole/Sieve/Configuration#Executing_Multiple_Scripts_Sequentially
       before = pkgs.writeScript "before.sieve" ''
         require "fileinto";
@@ -269,7 +313,10 @@ in rec {
     extraConfig = ''
       default_internal_user = dovecot2
       auth_mechanisms = plain login
-      auth_username_format = %Ln
+      # %L means normalise (downcase) usernames, %u is the full username with
+      # %the domain appended (example@example.org).
+      auth_username_format = %Lu
+
       disable_plaintext_auth = yes
       ssl = required
       ssl_cipher_list = EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!IDEA:!ECDSA:kEDH:CAMELLIA128-SHA:AES128-SHA
@@ -278,61 +325,46 @@ in rec {
       ssl_protocols = !SSLv2 !SSLv3 !TLSv1 !TLSv1.1
       mail_privileged_group = ${virtualMailGroup}
 
+      # TODO: enable these lines only if debug is true
       verbose_ssl = yes
       mail_debug = yes
       auth_debug = yes
       auth_debug_passwords = yes
 
-      mail_uid = ${virtualMailUserUID}
-      mail_uid = ${virtualMailUserGID}
-      first_valid_uid = ${virtualMailUserUID}
+      mail_uid = ${toString virtualMailUserUID}
+      mail_gid = ${toString virtualMailUserGID}
+      first_valid_uid = 1000
 
       lda_mailbox_autosubscribe = yes
       lda_mailbox_autocreate = yes
 
       passdb {
-        args = /var/lib/mail/%d/shadow
+        args = ${virtualMailUserHome}/%d/shadow
         driver = passwd-file
       }
 
       userdb {
-        args = /var/lib/mail/%d/passwd
+        args = ${virtualMailUserHome}/%d/passwd
         driver = passwd-file
       }
 
       service auth {
-        unix_listener /var/spool/postfix/private/auth {
-          group = mail
+        unix_listener /var/lib/postfix/queue/private/auth {
+          group = ${mtaGroup}
           mode = 0660
-          user = mail
+          user = ${mtaUser}
         }
         unix_listener auth-master {
-          group = mail
+          group = ${virtualMailGroup}
           mode = 0660
-          user = mail
+          user = ${virtualMailUser}
         }
       }
 
       protocol lda {
-        auth_socket_path = /var/run/dovecot/auth-master
+        auth_socket_path = /var/run/dovecot2/auth-master
         mail_plugins = $mail_plugins sieve
       }
-
-      # protocol lmtp {
-      #   mail_plugins = $mail_plugins sieve
-      # }
-
-      # service lmtp {
-      #   inet_listener {
-      #     port = 8458
-      #   }
-      # }
-
-      # service auth {
-      #   inet_listener {
-      #     port = 2847
-      #   }
-      # }
 
       namespace inbox {
         inbox = yes
@@ -401,15 +433,14 @@ in rec {
     enable = true;
   };
 
-  # https://git.schneefux.xyz/schneefux/blog/src/master/content/tech/nixos-mailserver.md
   services.opendkim = {
     enable = true;
     domains = "${hostname},mail.${hostname}";
     keyFile = "${opendkimStateDir}/default.private";
     selector = "key";
     socket = "local:${opendkimRuntimeDir}/opendkim.sock";
-    user = virtualMailUser;
-    group = virtualMailGroup;
+    user = mtaUser;
+    group = mtaGroup;
   };
 
   services.spamassassin.enable = true;
@@ -446,15 +477,18 @@ in rec {
     enable = true;
   };
 
-  users.users."${virtualMailUser}" = {
-    home = virtualMailUserHome;
-    createHome = true;
-    uid = virtualMailUserUID;
-    gid = virtualMailUserGID;
-    group = virtualMailGroup;
+  users.users = {
+    "${virtualMailUser}" = {
+      home = virtualMailUserHome;
+      createHome = true;
+      uid = virtualMailUserUID;
+      group = virtualMailGroup;
+    };
   };
 
-  users.groups = { "${virtualMailGroup}" = {}; };
-
-  # pkgspython27Packages.pypolicyd.spf
+  users.groups = {
+    "${virtualMailGroup}" = {
+      gid = virtualMailUserGID;
+    };
+  };
 }
