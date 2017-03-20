@@ -69,6 +69,10 @@ in rec {
        /^\s*X-Mailer/          IGNORE
        /^\s*X-Originating-IP/  IGNORE
      '';
+     postscreenAccessList = pkgs.writeText "postscreen_access_list.cidr" ''
+       # Whitelist domains here, see man 5 postconf: `postscreen_access_list'.
+       64.20.227.134 permit # https://mxtoolbox.com
+     '';
    in {
      enable = true;
      user = mtaUser;
@@ -192,7 +196,7 @@ in rec {
        non_smtpd_milters = unix:${opendkimRuntimeDir}/opendkim.sock
 
        # Postscreen
-       postscreen_access_list =  permit_mynetworks
+       postscreen_access_list =  permit_mynetworks, cidr:${postscreenAccessList}
        postscreen_blacklist_action = drop
        postscreen_greet_action = drop
 
