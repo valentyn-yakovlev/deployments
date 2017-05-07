@@ -78,12 +78,12 @@ in rec {
      user = mtaUser;
      group = mtaGroup;
      domain = hostname;
-     hostname = "mail.${hostname}";
+     hostname = "tsumugi.${hostname}";
      sslCACert = "/var/lib/acme/mail.${hostname}/fullchain.pem";
      sslCert = "/var/lib/acme/mail.${hostname}/cert.pem";
      sslKey = "/var/lib/acme/mail.${hostname}/key.pem";
      recipientDelimiter = "+";
-     destination = [ "mail.${hostname}" ];
+     destination = [ "tsumugi.${hostname}" ];
      # rootAlias = "r";
      # postmasterAlias = "r";
      # extraAliases = "eqyiel: r";
@@ -158,10 +158,14 @@ in rec {
        smtp_tls_security_level = dane
        smtp_dns_support_level = dnssec
        smtp_tls_session_cache_database = btree:''${data_directory}/smtp_scache
-       smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+       # Some servers (still) can't deal with TLSv1
+       # smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+       smtp_tls_protocols = !SSLv2, !SSLv3
        smtp_tls_ciphers = high
        smtpd_tls_security_level = may
-       smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+       # Some servers (still) can't deal with TLSv1
+       # smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+       smtpd_tls_protocols = !SSLv2, !SSLv3
        smtpd_tls_ciphers = high
        smtpd_tls_eecdh_grade = strong
        smtpd_tls_dh1024_param_file = /var/lib/dhparams/mail.${hostname}.pem
@@ -213,6 +217,9 @@ in rec {
   };
 
   security.acme.certs."mail.${hostname}" = commonAcmeConfig // {
+    extraDomains = {
+      "tsumugi.rkm.id.au" = null;
+    };
     postRun = "systemctl reload-or-restart postfix dovecot2";
   };
 
@@ -320,7 +327,6 @@ in rec {
       # %L means normalise (downcase) usernames, %u is the full username with
       # %the domain appended (example@example.org).
       auth_username_format = %Lu
-
       disable_plaintext_auth = yes
       ssl = required
       ssl_cipher_list = EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!IDEA:!ECDSA:kEDH:CAMELLIA128-SHA:AES128-SHA
