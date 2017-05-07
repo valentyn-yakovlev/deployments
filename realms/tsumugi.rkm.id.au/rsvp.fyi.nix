@@ -1,7 +1,6 @@
 { config, lib, pkgs, ... }:
 
 let
-
   secrets = import ./secrets.nix;
   documentRoot = "/var/www/rsvp.fyi";
   serverRoot = "/var/lib/rsvp.fyi";
@@ -37,9 +36,9 @@ in {
               alias ${robotsTxt};
             '';
           };
-          "/api" = {
-            proxyPass = "http://127.0.0.1:12344";
-          };
+          # "/api" = {
+          #   proxyPass = "http://127.0.0.1:12344";
+          # };
           "/" = {
             root = "${clientPkg}";
             extraConfig = "try_files $uri $uri/ /index.html;";
@@ -61,28 +60,28 @@ in {
       };
     };
 
-  services.postgresql.enable = true;
+  # services.postgresql.enable = true;
 
-  systemd.services."${hostname}-server" = {
-     after = [ "network.target" "nginx.service" "postgresql.service" ];
-     environment = {
-       PGUSER = "${pgUser}";
-       PGDATABASE = "${pgDatabase}";
-       PGPASSWORD = "${pgPassword}";
-       PGPORT = "${toString pgPort}";
-       PGHOST = "${pgHost}";
-       PGMAXCLIENTS = "10";
-       PGIDLETIMEOUTMILLIS = "30000";
-       HOST = "${serverHost}";
-       PORT = "${toString serverPort}";
-       PASSWORD = "${serverPassword}";
-     };
-     serviceConfig = {
-       Type = "simple";
-       Restart = "always";
-       RestartSec = "300";
-       ExecStart = "${serverPkg}/bin/rsvp.fyi-server";
-     };
-     enable = true;
-  };
+  # systemd.services."${hostname}-server" = {
+  #    after = [ "network.target" "nginx.service" "postgresql.service" ];
+  #    environment = {
+  #      PGUSER = "${pgUser}";
+  #      PGDATABASE = "${pgDatabase}";
+  #      PGPASSWORD = "${pgPassword}";
+  #      PGPORT = "${toString pgPort}";
+  #      PGHOST = "${pgHost}";
+  #      PGMAXCLIENTS = "10";
+  #      PGIDLETIMEOUTMILLIS = "30000";
+  #      HOST = "${serverHost}";
+  #      PORT = "${toString serverPort}";
+  #      PASSWORD = "${serverPassword}";
+  #    };
+  #    serviceConfig = {
+  #      Type = "simple";
+  #      Restart = "always";
+  #      RestartSec = "300";
+  #      ExecStart = "${serverPkg}/bin/rsvp.fyi-server";
+  #    };
+  #    enable = true;
+  # };
 }
