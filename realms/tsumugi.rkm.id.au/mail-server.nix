@@ -5,6 +5,10 @@
 # http://www.akadia.com/services/postfix_separate_mailboxes.html
 # https://tech.tiq.cc/2014/02/how-to-set-up-an-email-server-with-postfix-and-dovecot-without-mysql-on-debian-7/
 
+# TODO: assert that there's not more than one catchAll user configured for a
+# domain
+# TODO: convert to a module
+
 { config, lib, pkgs, ... }:
 let
   virtualMailUser = "mail";
@@ -25,7 +29,28 @@ let
         name = "r";
         aliases = [ "root" ];
         catchAll = true;
-        bccSelf = true;
+        sieveScript = ''
+          require ["fileinto", "mailbox", "regex"];
+
+          if address :is "from" "notifications@github.com" {
+            fileinto :create "GitHub";
+            stop;
+          }
+
+          # Be sure to use the dot separator if you need to create new folders.
+          # I think.
+          elsif header :contains "list-id" "<nix-dev@lists.science.uu.nl>" {
+            fileinto :create "Lists.nix-dev";
+            stop;
+          }
+
+          # This must be the last rule, it will check if list-id is set, and file the
+          # message into the INBOX.Lists-folder for further investigation
+          elsif header :matches "list-id" "<?*>" {
+            fileinto :create "Lists";
+            stop;
+          }
+        '';
       }];
     };
     "huttriverprovince.com.au" = {
@@ -39,19 +64,13 @@ let
     (domains: (lib.flatten (lib.mapAttrsToList
       (domain: props: map ({
         name,
-        # Other addresses that reach this mailbox.
-        aliases ? [],
-        # Should this be the catch-all address for this domain?
-        # TODO: make sure this isn't set for more than one user.
-        catchAll ? false,
-         # If this is true, mark mail coming from these users as \\Seen.
-         # This is useful if you configure your mail client to BCC self for
-         # nicer threading.
-        bccSelf ? false,
-        password ? "hunter2",
+        aliases ? [],         # Other addresses that reach this mailbox.
+        catchAll ? false,     # Should this be the catch-all address for this domain?
+        sieveScript ? false,  # User's personal sieve script
+        password ? "hunter2", # Use dumb default password if the user hasn't set one
         ...
       }: {
-        inherit aliases bccSelf catchAll domain name password;
+        inherit aliases sieveScript catchAll domain name password;
         address = "${name}@${domain}";
       }) props.users) domains)));
 
@@ -257,6 +276,17 @@ in rec {
           echo "${address}:$(${pkgs.dovecot}/bin/doveadm pw -p ${lib.escapeShellArg password})" >> \
             "${virtualMailUserHome}/${domain}/shadow"
         '') (withPasswordFromSecretsFile (mapDomainsToUsers domains));
+
+      writeUserSieveScript = lib.concatMapStringsSep "\n" (user:
+          let userSieveScriptLocation =
+            "${virtualMailUserHome}/${user.domain}/${user.address}/.dovecot.sieve";
+          in if lib.isString user.sieveScript then ''
+            cat << EOF > "${userSieveScriptLocation}"
+              ${user.sieveScript}
+            EOF
+          '' else ''
+            test -f "${userSieveScriptLocation}" && rm "${userSieveScriptLocation}"
+          '') (mapDomainsToUsers domains);
     in {
       ExecStart = pkgs.writeScript "dovecot2-startup" ''
         #! ${pkgs.bash}/bin/bash
@@ -268,6 +298,7 @@ in rec {
 
         ${createPerDomainPasswdAndShadowFiles}
         ${addUsersToPerDomainPasswdAndShadowFiles}
+        ${writeUserSieveScript}
       '';
     };
     enable = true;
@@ -285,7 +316,11 @@ in rec {
     modules = [ pkgs.dovecot_pigeonhole ];
     protocols = [ "sieve" ];
     showPAMFailure = false;
-    sieveScripts = { # http://wiki2.dovecot.org/Pigeonhole/Sieve/Configuration#Executing_Multiple_Scripts_Sequentially
+    sieveScripts = {
+    # Keys must be like this:
+    # before, before2, before3, ....
+    # after, after2, after3, ...
+    # http://wiki2.dovecot.org/Pigeonhole/Sieve/Configuration#Executing_Multiple_Scripts_Sequentially
       before = pkgs.writeScript "before.sieve" ''
         require "fileinto";
         if header :contains "X-Spam-Flag" "YES" {
@@ -295,29 +330,6 @@ in rec {
           # The rest goes into INBOX
           # default is "implicit keep", we do it explicitly here
           keep;
-        }
-      '';
-      before2 = let
-        body = lib.concatMapStringsSep "elsif " (x: ''
-          envelope "from" "${x}" {
-            setflag "\\Seen";
-            # Unfortunately setflag doesn't work with implicit or explicit keep.
-            # Workaround is to file into INBOX.
-            fileinto "INBOX";
-          }
-        '') (map ({ address, ... }: address)
-              (lib.filter ({ bccSelf, ... }: bccSelf)
-                (mapDomainsToUsers domains)));
-      in pkgs.writeScript "before2.sieve" ''
-        # Hack to make mail threading more pleasant.  Configure mail client to
-        # BCC-self, those mails will get marked as read.
-        require ["envelope", "imap4flags", "fileinto"];
-        if ${body}
-      '';
-      before3 = pkgs.writeScript "before3.sieve" ''
-        require ["fileinto", "body", "mailbox"];
-        if body :contains ["Unsubscribe", "unsubscribe"] {
-          fileinto :create "Marketing Spam";
         }
       '';
     };
@@ -340,6 +352,9 @@ in rec {
       mail_debug = yes
       auth_debug = yes
       auth_debug_passwords = yes
+
+      # k-9 mail chews through these
+      mail_max_userip_connections = 50
 
       mail_uid = ${toString virtualMailUserUID}
       mail_gid = ${toString virtualMailUserGID}
@@ -403,10 +418,6 @@ in rec {
         mailbox Archive {
           auto = subscribe
           special_use = \Archive
-        }
-
-        mailbox "Marketing Spam" {
-          auto = subscribe
         }
       }
     '';
