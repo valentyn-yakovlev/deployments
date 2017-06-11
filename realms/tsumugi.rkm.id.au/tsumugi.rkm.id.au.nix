@@ -90,7 +90,6 @@ in
         gnumake
         gnupg21
         inetutils
-        nix-zsh-completions
         nmap
         openssl
         pwgen
@@ -104,7 +103,6 @@ in
         which
         whois
         zsh
-        zsh-completions
       ];
       pathsToLink = [ "/include" ];
     };
@@ -144,14 +142,47 @@ in
       appendConfig = ''
         error_log stderr info;
       '';
-      virtualHosts =
-      let
-        commonVirtualHostConfig = {
+      virtualHosts = {
+        "rkm.id.au" =  {
+           enableSSL = true;
+           forceSSL = true;
+           enableACME = true;
+           root = "/var/www/public_html/rkm.id.au";
+           # locations = {
+           #   "/" = {
+               
+           #   };
+           # };
+        };
+
+        "matrix.rkm.id.au" = {
           enableSSL = true;
           forceSSL = true;
           locations = {
+            "/" = {
+              proxyPass = "https://127.0.0.1:8448";
+            };
             "/.well-known/acme-challenge" = {
-              root = "/var/www/challenges";
+              root = "/var/lib/acme/acme-challenge";
+            };
+            "= /robots.txt" = {
+              extraConfig = ''
+                allow all;
+                log_not_found off;
+                access_log off;
+              '';
+            };
+          };
+
+          sslCertificate = "/var/lib/acme/matrix.rkm.id.au/fullchain.pem";
+          sslCertificateKey = "/var/lib/acme/matrix.rkm.id.au/key.pem";
+        };
+
+        "_" = {
+          default = true;
+          locations = {
+            "/.well-known/acme-challenge" = {
+              root = "/var/lib/acme/acme-challenge";
             };
             "= /robots.txt" = {
               extraConfig = ''
@@ -162,24 +193,26 @@ in
             };
           };
         };
-      in {
-        "matrix.rkm.id.au" = commonVirtualHostConfig // {
-          locations = {
-            "/.well-known/acme-challenge" = {
-              root = "/var/www/challenges";
-            };
-            "/" = {
-              proxyPass = "https://127.0.0.1:8448";
-            };
-          };
-          sslCertificate = "/var/lib/acme/matrix.rkm.id.au/fullchain.pem";
-          sslCertificateKey = "/var/lib/acme/matrix.rkm.id.au/key.pem";
-        };
-        "_" = {
-          default = true;
-          locations = commonVirtualHostConfig.locations;
-        };
       };
+    };
+
+    systemd.services.nginx-startup = {
+      after = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+      unitConfig = {
+        Before = "nginx.service";
+      };
+      serviceConfig = {
+        ExecStart = pkgs.writeScript "nginx-startup" ''
+          #! ${pkgs.bash}/bin/bash
+          if (! test -e "/var/www/public_html"); then
+            mkdir -p "/var/www/public_html"
+            chmod 755 "/var/www/public_html"
+            chown -R www-data:www-data "/var/www/public_html"
+          fi
+      '';
+      };
+      enable = true;
     };
 
     services.coturn = {
@@ -194,11 +227,15 @@ in
     };
 
     security.acme.certs = {
+      "rkm.id.au" = commonAcmeConfig // {
+        postRun = "systemctl reload-or-restart nginx";
+      };
       "matrix.rkm.id.au" = commonAcmeConfig // {
+        webroot = "/var/lib/acme/acme-challenge";
         extraDomains = {
           "turn.rkm.id.au" = null;
         };
-        postRun = "systemctl reload-or-restart nginx matrix-synapse";
+        postRun = "systemctl reload-or-restart matrix-synapse coturn";
       };
     };
 
@@ -219,7 +256,7 @@ in
      };
       eqyiel = {
         isNormalUser = true;
-        extraGroups = [ "wheel" "systemd-journal" ];
+        extraGroups = [ "wheel" "systemd-journal" "www-data" ];
         shell = pkgs.zsh;
         openssh.authorizedKeys.keys = [
           sshKeys.rkm

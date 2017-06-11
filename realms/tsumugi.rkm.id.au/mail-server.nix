@@ -236,6 +236,7 @@ in rec {
   };
 
   security.acme.certs."mail.${hostname}" = commonAcmeConfig // {
+    webroot = "/var/lib/acme/acme-challenge";
     extraDomains = {
       "tsumugi.rkm.id.au" = null;
     };

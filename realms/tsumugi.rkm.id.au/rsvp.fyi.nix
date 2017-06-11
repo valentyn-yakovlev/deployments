@@ -30,6 +30,7 @@ in {
         enableSSL = true;
         forceSSL = true;
         enableACME = true;
+        acmeRoot = "/var/lib/acme";
         locations = {
           "/robots.txt" = {
             extraConfig = ''
@@ -50,6 +51,7 @@ in {
       "staging.${hostname}" = virtualhostConfig;
       "www.${hostname}" = {
         enableACME = true;
+        acmeRoot = "/var/lib/acme";
         enableSSL = true;
         forceSSL = true;
         locations = {

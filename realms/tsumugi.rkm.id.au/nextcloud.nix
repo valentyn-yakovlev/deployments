@@ -9,8 +9,9 @@ in {
   services.nginx.virtualHosts."${hostname}" = {
     enableSSL = true;
     forceSSL = true;
-    sslCertificate = "/var/lib/acme/${hostname}/fullchain.pem";
-    sslCertificateKey = "/var/lib/acme/${hostname}/key.pem";
+    enableACME = true;
+    # sslCertificate = "/var/lib/acme/${hostname}/fullchain.pem";
+    # sslCertificateKey = "/var/lib/acme/${hostname}/key.pem";
     extraConfig = ''
       # Path to the root of your installation
       root ${pkgs.nextcloud};
@@ -35,10 +36,6 @@ in {
       add_header X-Robots-Tag none;
       add_header X-Download-Options noopen;
       add_header X-Permitted-Cross-Domain-Policies none;
-
-      location /.well-known/acme-challenge {
-        root /var/www/challenges;
-      }
 
       location = /robots.txt {
         allow all;
@@ -158,8 +155,4 @@ in {
     php_value[upload_max_filesize] = 10G
     php_value[cgi.fix_pathinfo] = 1
   '';
-
-  security.acme.certs."${hostname}" = commonAcmeConfig // {
-    postRun = "systemctl reload-or-restart nginx";
-  };
 }
