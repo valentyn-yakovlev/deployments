@@ -144,15 +144,10 @@ in
       '';
       virtualHosts = {
         "rkm.id.au" =  {
-           enableSSL = true;
-           forceSSL = true;
-           enableACME = true;
-           root = "/var/www/public_html/rkm.id.au";
-           # locations = {
-           #   "/" = {
-               
-           #   };
-           # };
+          enableSSL = true;
+          forceSSL = true;
+          enableACME = true;
+          root = "/var/www/public_html/rkm.id.au";
         };
 
         "matrix.rkm.id.au" = {
@@ -207,10 +202,10 @@ in
           #! ${pkgs.bash}/bin/bash
           if (! test -e "/var/www/public_html"); then
             mkdir -p "/var/www/public_html"
-            chmod 755 "/var/www/public_html"
+            chmod 770 "/var/www/public_html"
             chown -R www-data:www-data "/var/www/public_html"
           fi
-      '';
+        '';
       };
       enable = true;
     };

@@ -39,14 +39,14 @@ let
 
           # Be sure to use the dot separator if you need to create new folders.
           # I think.
-          elsif header :contains "list-id" "<nix-dev@lists.science.uu.nl>" {
+          elsif header :contains "list-id" "nix-dev.lists.science.uu.nl" {
             fileinto :create "Lists.nix-dev";
             stop;
           }
 
-          # This must be the last rule, it will check if list-id is set, and file the
-          # message into the INBOX.Lists-folder for further investigation
-          elsif header :matches "list-id" "<?*>" {
+          # This must be the last rule, it will check if list-id is set, and
+          # file the message into the Lists folder for further investigation
+          elsif header :matches "list-id" "?*" {
             fileinto :create "Lists";
             stop;
           }
@@ -203,12 +203,51 @@ in rec {
                                    reject_unknown_recipient_domain
                                    permit_mynetworks
                                    reject_unauth_destination
+
+       # Warning: MelbourneIT password reset email bounces if this is set. :(
+       #
+       # See also: https://serverfault.com/questions/111217
+       #
+       # See also this thread from the postfix mailing list, copied here for
+       # posterity:
+       # http://postfix.1071664.n5.nabble.com/is-reject-unknown-client-hostname-safe-now-aka-FCRDNS-td32620.html
+       #
+       #  Michael Monnerie wrote, at 06/16/2009 02:17 AM:
+       # > A big ISP here in Austria started to use reject_unknown_client_hostname
+       # > (http://www.postfix.org/postconf.5.html#reject_unknown_client_hostname)
+       # > also known as http://en.wikipedia.org/wiki/Forward_Confirmed_reverse_DNS
+       # >
+       # > Is this option safe today? About 2 years ago it was not, rejecting lots
+       # > of good mails. In terms of anti-spam, I'd love to use it, as it should
+       # > really help drop a lot of zombie PC's mails in a simple manner. But I'd
+       # > like to hear opinions or experience of others.
+       #
+       # I tried using it for a while last year and found it still to be unsafe.
+       # Attempts to contact sites about misconfiguration led nowhere. Maybe if
+       # more big ISPs start blocking on the criteria, things will change. One
+       # common pattern I noticed with problem sites was the insertion of spam
+       # appliances without properly considering DNS. Government and education
+       # sites seemed to be particularly unable to understand and correct it. As
+       # much as I want to use reject_unknown_client_hostname (it was extremely
+       # effective in combatting the few remaining spam that get past my other
+       # defenses), I've been increasing the score of RDNS_NONE in SpamAssassin,
+       # which will supposedly catch this along with other DNS misconfigurations.
+       #
+       # In any case, if you want to evaluate it, add this to
+       # smtpd_recipient_restrictions (probably best near the end, right before
+       # any reject_rbl_client restrictions):
+       #
+       #  warn_if_reject reject_unknown_client_hostname
+       #
+       # Monitor your logs for a while to see if you can afford to reject on this
+       # criteria. It still indicates that it's unsafe for me to do so.
+
        smtpd_client_restrictions = permit_mynetworks
-                                   reject_unknown_client_hostname
+                                   # reject_unknown_client_hostname
        smtpd_helo_required = yes
        smtpd_helo_restrictions = permit_mynetworks
-                                 reject_invalid_helo_hostname
                                  reject_non_fqdn_helo_hostname
+                                 reject_invalid_helo_hostname
                                  reject_unknown_helo_hostname
        smtpd_data_restrictions = reject_unauth_pipelining
 
