@@ -499,38 +499,6 @@ in rec {
 
   services.spamassassin.enable = true;
 
-  systemd.services.spamassassin-startup = {
-    after = [ "network.target" ];
-    wantedBy = [ "multi-user.target" ];
-    requiredBy = [ "spamassassin.service" ];
-    restartIfChanged = true;
-    serviceConfig = {
-      ExecStart = pkgs.writeScript "spamassassin-startup" ''
-        #! ${pkgs.bash}/bin/bash
-        if (! test -d "/etc/spamassassin"); then
-          mkdir /etc/spamassassin
-        fi
-
-        cd /etc/spamassassin
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/20_aux_tlds.cf  .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/active.list .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/init.pre .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/languages .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/local.cf .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/regression_tests.cf .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/sa-update-pubkey.txt .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/user_prefs.template.cf .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/v310.pre .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/v312.pre .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/v320.pre .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/v330.pre .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/v340.pre .
-        ln -sf ${pkgs.spamassassin}/share/spamassassin/v341.pre .
-      '';
-    };
-    enable = true;
-  };
-
   users.users = {
     "${virtualMailUser}" = {
       home = virtualMailUserHome;
