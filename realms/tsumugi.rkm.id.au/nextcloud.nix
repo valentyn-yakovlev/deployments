@@ -43,10 +43,6 @@ in {
         access_log off;
       }
 
-      location ~ ^/(?:\.htaccess|data|config|db_structure\.xml|README) {
-        deny all;
-      }
-
       location = /.well-known/carddav {
         return 301 $scheme://$host/remote.php/dav;
       }
@@ -60,7 +56,15 @@ in {
         try_files $uri $uri/ /index.php;
       }
 
-      location ~ \.php(?:$|/) {
+      location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)/ {
+        deny all;
+      }
+
+      location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console) {
+        deny all;
+      }
+
+      location ~ ^/(?:index|remote|public|cron|core/ajax/update|status|ocs/v[12]|updater/.+|ocs-provider/.+)\.php(?:$|/) {
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
         include ${pkgs.nginx}/conf/fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
