@@ -37,13 +37,6 @@ let
             stop;
           }
 
-          # Be sure to use the dot separator if you need to create new folders.
-          # I think.
-          elsif header :contains "list-id" "nix-dev.lists.science.uu.nl" {
-            fileinto :create "Lists.nix-dev";
-            stop;
-          }
-
           # This must be the last rule, it will check if list-id is set, and
           # file the message into the Lists folder for further investigation
           elsif header :matches "list-id" "?*" {
