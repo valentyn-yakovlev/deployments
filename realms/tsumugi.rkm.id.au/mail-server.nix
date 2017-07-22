@@ -30,7 +30,7 @@ let
         aliases = [ "root" ];
         catchAll = true;
         sieveScript = ''
-          require ["fileinto", "mailbox", "regex"];
+          require ["fileinto", "mailbox"];
 
           if address :is "from" "notifications@github.com" {
             fileinto :create "GitHub";
@@ -39,7 +39,7 @@ let
 
           # This must be the last rule, it will check if list-id is set, and
           # file the message into the Lists folder for further investigation
-          elsif header :matches "list-id" "?*" {
+          elsif header :matches "list-id" "<?*>" {
             fileinto :create "Lists";
             stop;
           }
