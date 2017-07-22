@@ -241,7 +241,13 @@ in rec {
        smtpd_helo_restrictions = permit_mynetworks
                                  reject_non_fqdn_helo_hostname
                                  reject_invalid_helo_hostname
-                                 reject_unknown_helo_hostname
+                                 # This can reject valid mail from misconfigured servers.
+                                 # reject_unknown_helo_hostname
+       # http://postfix.1071664.n5.nabble.com/setting-smtpd-helo-restrictions-rejects-exchange-servers-td18254.html
+       # reject_unknown_helo_hostname is known to block "legitimate" mail,
+       # mostly from misconfigured sites (but it will defer mail in case of DNS
+       # problems even if the other side is well configured).
+
        smtpd_data_restrictions = reject_unauth_pipelining
 
        # OpenDKIM
