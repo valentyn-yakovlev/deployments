@@ -131,40 +131,37 @@ in rec {
         allowedTCPPorts = [
           22 # ssh, sftp
           80 # http
+          config.services.transmission.port
         ];
         allowedUDPPorts = [];
-        trustedInterfaces = [ "lo" ];
+        trustedInterfaces = [];
+        logRefusedPackets = true;
         extraCommands = ''
-          for chain in \
-            restrict-users-tun-input \
-            restrict-users-tun-output; do
-            ip46tables \
-              --flush "''${chain}" \
-              2>/dev/null || true
-            ip46tables \
-              --delete-chain "''${chain}" \
-              2>/dev/null || true
-          done
+          ip46tables \
+            --delete OUTPUT \
+            --jump restrict-users-tun-output \
+            2>/dev/null || true
 
-          ip46tables --new-chain restrict-users-tun-input
+          ip46tables \
+            --flush \
+            restrict-users-tun-output \
+            2>/dev/null || true
+
+          ip46tables \
+            --delete-chain restrict-users-tun-output \
+            2>/dev/null || true
+
           ip46tables --new-chain restrict-users-tun-output
 
-          # Allow transmission to serve its web client on the loopback interface
+          # Make an exception for transmission so that it can serve its web
+          # client on the loopback interface
           ip46tables \
             --append restrict-users-tun-output \
             --match owner \
             --uid-owner ${config.users.users.transmission.name} \
             --out-interface lo \
-            --source-port ${toString config.services.transmission.port}\
-            --jump ACCEPT
-
-          # Allow transmission to serve its web client on the loopback interface
-          ip46tables \
-            --append restrict-users-tun-input \
-            --match owner \
-            --uid-owner ${config.users.users.transmission.name} \
-            --out-interface lo \
-            --destination-port ${toString config.services.transmission.port}\
+            --protocol tcp \
+            --source-port ${toString config.services.transmission.port} \
             --jump ACCEPT
 
           # DROP any packet which is going to be sent by this --uid-owner if
@@ -176,40 +173,30 @@ in rec {
             ip46tables \
               --append restrict-users-tun-output \
               --match owner \
-              --uid-owner "''${user}"
+              --uid-owner "''${user}" \
               ! --out-interface tun+ \
               --jump DROP
           done
 
-          # DROP any packet which is going to be sent by this --uid-owner if
-          # it is for any --in-interface whose name does not (\!) start with
-          # "tun".
-          ip46tables \
-            --append restrict-users-tun-output \
-            --match owner \
-            --uid-owner "''${user}"
-            ! --out-interface tun+ \
-            --jump DROP
-
-          # Enable the chains
-          ip46tables \
-            --append INPUT \
-            --jump restrict-users-tun-input
+          # Enable the chain
           ip46tables \
             --append OUTPUT \
             --jump restrict-users-tun-output
         '';
         extraStopCommands = ''
-          for chain in \
-            restrict-users-tun-input \
-            restrict-users-tun-output; do
-            ip46tables \
-              --flush "''${chain}" \
-              2>/dev/null || true
-            ip46tables \
-              --delete-chain "''${chain}" \
-              2>/dev/null || true
-          done
+          ip46tables \
+            --delete OUTPUT \
+            --jump restrict-users-tun-output \
+            2>/dev/null || true
+
+          ip46tables \
+            --flush \
+            restrict-users-tun-output \
+            2>/dev/null || true
+
+          ip46tables \
+            --delete-chain restrict-users-tun-output \
+            2>/dev/null || true
         '';
       };
       networkmanager = {
