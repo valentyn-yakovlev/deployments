@@ -88,7 +88,7 @@ in
         gitAndTools.gitFull
         gnugrep
         gnumake
-        gnupg21
+        gnupg22
         inetutils
         nmap
         openssl
@@ -144,15 +144,13 @@ in
       '';
       virtualHosts = {
         "rkm.id.au" =  {
-          enableSSL = true;
-          forceSSL = true;
+          onlySSL = true;
           enableACME = true;
           root = "/var/www/public_html/rkm.id.au";
         };
 
         "matrix.rkm.id.au" = {
-          enableSSL = true;
-          forceSSL = true;
+          onlySSL = true;
           locations = {
             "/" = {
               proxyPass = "https://127.0.0.1:8448";
@@ -235,7 +233,10 @@ in
     };
 
     services.postgresql.enable = true;
+
     services.openssh.enable = true;
+    services.openssh.permitRootLogin = "yes";
+
     services.fail2ban.enable = true;
 
     programs.zsh.enable = true;

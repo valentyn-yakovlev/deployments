@@ -14,8 +14,7 @@ in rec {
 
   services.nginx.virtualHosts = {
     "${hostname}" = {
-      enableSSL = true;
-      forceSSL = true;
+      onlySSL = true;
       enableACME = true;
       locations = {
         "/robots.txt" = {

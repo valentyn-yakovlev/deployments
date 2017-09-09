@@ -5,6 +5,7 @@
   { config, lib, pkgs, resources, ...}:
   { deployment.targetEnv = "none";
     deployment.targetHost = "43.229.61.217";
+    deployment.targetPort = 22;
 
     imports = [ <nixpkgs/nixos/modules/profiles/qemu-guest.nix> ];
 

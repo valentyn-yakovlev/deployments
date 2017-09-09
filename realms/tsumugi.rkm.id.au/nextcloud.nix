@@ -7,8 +7,7 @@ commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
 
 in {
   services.nginx.virtualHosts."${hostname}" = {
-    enableSSL = true;
-    forceSSL = true;
+    onlySSL = true;
     enableACME = true;
     # sslCertificate = "/var/lib/acme/${hostname}/fullchain.pem";
     # sslCertificateKey = "/var/lib/acme/${hostname}/key.pem";

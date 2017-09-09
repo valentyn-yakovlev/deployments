@@ -27,8 +27,7 @@ in {
   services.nginx.virtualHosts =
     let
       virtualhostConfig = {
-        enableSSL = true;
-        forceSSL = true;
+        onlySSL = true;
         enableACME = true;
         acmeRoot = "/var/lib/acme";
         locations = {
@@ -52,8 +51,7 @@ in {
       "www.${hostname}" = {
         enableACME = true;
         acmeRoot = "/var/lib/acme";
-        enableSSL = true;
-        forceSSL = true;
+        onlySSL = true;
         locations = {
           "/" = {
             extraConfig = "return 301 $scheme://${hostname}$request_uri;";
