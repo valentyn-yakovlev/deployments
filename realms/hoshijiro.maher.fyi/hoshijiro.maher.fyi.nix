@@ -154,7 +154,7 @@ in rec {
           ip46tables --new-chain restrict-users-tun-output
 
           # Make an exception for transmission so that it can serve its web
-          # client on the loopback interface
+          # client on the loopback interface.
           ip46tables \
             --append restrict-users-tun-output \
             --match owner \
@@ -162,6 +162,16 @@ in rec {
             --out-interface lo \
             --protocol tcp \
             --source-port ${toString config.services.transmission.port} \
+            --jump ACCEPT
+
+          # Also allow these users to reach port 80 (where nginx is proxying
+          # requests) on the loopback interface.
+          # that get dropped below?
+          ip46tables \
+            --append restrict-users-tun-output \
+            --out-interface lo \
+            --protocol tcp \
+            --destination-port 80 \
             --jump ACCEPT
 
           # DROP any packet which is going to be sent by this --uid-owner if
@@ -276,6 +286,13 @@ in rec {
           '';
         };
       };
+      gnome3.excludePackages = [
+        # gnome-software doesn't build and it wouldn't with nixos anyway, at
+        # least before something like this is done:
+        # RFC: Generating AppStream Metadata #15932:
+        # https://github.com/NixOS/nixpkgs/issues/15932
+        pkgs.gnome3.gnome-software
+      ];
     };
 
     services.nginx = {
@@ -339,8 +356,8 @@ in rec {
         enable = true;
         flags = "-k -p --utc";
         daily = 7;
-        frequent = 4;
-        hourly = 24;
+        frequent = 0;
+        hourly = 0;
         monthly = 12;
         weekly = 4;
       };
@@ -366,10 +383,10 @@ in rec {
       };
     };
 
+    # TODO: move its actual home to here
     services.transmission = {
       enable = true;
       port = 9091;
-      # try binding for tun interface
       settings = {
         download-dir = "/mnt/transmission/download-dir";
         incomplete-dir = "/mnt/transmission/incomplete-dir";
@@ -380,6 +397,8 @@ in rec {
         ratio-limit = "2.0";
         upload-limit = "100";
         upload-limit-enabled = true;
+        watch-dir = "/mnt/transmission/watch-dir";
+        watch-dir-enabled = true;
       };
     };
 
