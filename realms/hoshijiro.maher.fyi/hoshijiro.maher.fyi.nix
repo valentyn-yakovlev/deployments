@@ -26,6 +26,10 @@ in rec {
       fsType = "vfat";
     };
 
+    # To create new zfs "filesystems":
+    #
+    # $ zfs create -o mountpoint=legacy tank/name-of-the-filesystem
+    # $ zfs set atime=off tank/name-of-the-filesystem
     fileSystems."/mnt/media" = {
       options = [
         "nofail"
@@ -35,12 +39,21 @@ in rec {
       fsType = "zfs";
     };
 
-    fileSystems."/mnt/transmission" = {
+    fileSystems."/mnt/var" = {
       options = [
         "nofail"
         "x-systemd.device-timeout=1"
       ];
-      device = "tank/transmission";
+      device = "tank/var";
+      fsType = "zfs";
+    };
+
+    fileSystems."/mnt/home" = {
+      options = [
+        "nofail"
+        "x-systemd.device-timeout=1"
+      ];
+      device = "tank/home";
       fsType = "zfs";
     };
 
@@ -97,7 +110,7 @@ in rec {
           # Unfortunately it doesn't seem to work with ZFS, even if it's used
           # for non-root partitions.
           #
-          # This means you have to enter a passphrase for each of these devices
+          # this means you have to enter a passphrase for each of these devices
           # during boot.  😿
           {
             name = "crypto_zfs_00";
@@ -329,6 +342,7 @@ in rec {
               alias = "${pkgs.transmission}/share/transmission/web/style/";
             };
 
+
             "/transmission/web/javascript/" = {
               alias = "${pkgs.transmission}/share/transmission/web/javascript/";
             };
@@ -387,9 +401,10 @@ in rec {
     services.transmission = {
       enable = true;
       port = 9091;
+      home = "/mnt/var/lib/${config.users.users.transmission.name}";
       settings = {
-        download-dir = "/mnt/transmission/download-dir";
-        incomplete-dir = "/mnt/transmission/incomplete-dir";
+        download-dir = "${config.services.transmission.home}/download-dir";
+        incomplete-dir = "${config.services.transmission.home}/incomplete-dir";
         incomplete-dir-enabled = true;
         rpc-whitelist = "127.0.0.1,192.168.*.*";
         rpc-whitelist-enabled = true;
@@ -397,7 +412,7 @@ in rec {
         ratio-limit = "2.0";
         upload-limit = "100";
         upload-limit-enabled = true;
-        watch-dir = "/mnt/transmission/watch-dir";
+        watch-dir = "${config.users.users.transmission.home}/watch-dir";
         watch-dir-enabled = true;
       };
     };
@@ -420,8 +435,11 @@ in rec {
        ];
        inherit (secrets.users.users.root) initialPassword;
      };
+
       eqyiel = {
-        isNormalUser = true;
+        home = "/mnt/home/${config.users.users.eqyiel.name}";
+        isNormalUser = false;
+        isSystemUser = false;
         extraGroups = [
           "wheel"
           "${config.users.groups.systemd-journal.name}"
