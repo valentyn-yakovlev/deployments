@@ -268,6 +268,8 @@ in
       };
     };
 
+    system.stateVersion = "17.09";
+
     users.groups.www-data.name = "www-data";
 
     nix.gc.automatic = true;

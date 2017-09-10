@@ -156,6 +156,14 @@ in {
           chmod 755 "''${NEXTCLOUD_PATH}"
           chown -R www-data:www-data "''${NEXTCLOUD_PATH}"
         fi
+
+        if (test -L "''${NEXTCLOUD_PATH}/apps_internal"); then
+          rm "''${NEXTCLOUD_PATH}/apps_internal"
+        fi
+
+        if (! test -e "''${NEXTCLOUD_PATH}/apps_internal"); then
+          ln -s ${pkgs.nextcloud}/apps "''${NEXTCLOUD_PATH}/apps_internal"
+        fi
     '';
     };
     enable = true;
