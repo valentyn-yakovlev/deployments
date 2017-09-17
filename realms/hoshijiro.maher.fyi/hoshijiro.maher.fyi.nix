@@ -13,7 +13,9 @@
     };
 
 in rec {
-    imports = [] ++ (import ./../../local/modules/module-list.nix);
+    imports = [
+      ./../../local/pkgs/overrides.nix
+    ] ++ (import ./../../local/modules/module-list.nix);
 
     fileSystems."/" = {
       device = "/dev/mapper/vgroup-root";
@@ -57,6 +59,21 @@ in rec {
       fsType = "zfs";
     };
 
+    fileSystems."/export/media" = {
+      device = "/mnt/media";
+      options = [ "bind" ];
+    };
+
+    fileSystems."/export/home" = {
+      device = "/mnt/home";
+      options = [ "bind" ];
+    };
+
+    fileSystems."/export/transmission" = {
+      device = "/mnt/var/lib/transmission";
+      options = [ "bind" ];
+    };
+
     hardware.pulseaudio.enable = true;
 
     swapDevices = [{ device = "/dev/mapper/vgroup-swap"; }];
@@ -77,7 +94,7 @@ in rec {
       cleanTmpDir = true;
       extraModulePackages = [ ];
       kernelModules = [ "kvm-intel" ];
-      supportedFilesystems = [ "zfs" ];
+      supportedFilesystems = [ "zfs" "nfs" ];
       initrd = {
         network = {
           enable = true;
@@ -144,9 +161,20 @@ in rec {
         allowedTCPPorts = [
           22 # ssh, sftp
           80 # http
+          88 # Kerberos v5
+          111 # NFS
+          2049 # NFS
+          config.services.nfs.server.mountdPort # NFS
+          config.services.nfs.server.lockdPort # NFS lockd
           config.services.transmission.port
         ];
-        allowedUDPPorts = [];
+        allowedUDPPorts = [
+          88 # Kerberos v5
+          111 # NFS
+          2049 # NFS
+          config.services.nfs.server.mountdPort # NFS
+          config.services.nfs.server.lockdPort # NFS
+        ];
         trustedInterfaces = [];
         logRefusedPackets = true;
         extraCommands = ''
@@ -276,7 +304,7 @@ in rec {
       defaultLocale = "en_US.UTF-8";
     };
 
-    time.timeZone = "Adelaide/Australia";
+    time.timeZone = "Australia/Adelaide";
 
     environment = {
       systemPackages = with pkgs; [
@@ -288,6 +316,7 @@ in rec {
         hplip
         libreoffice
         python27Packages.syncthing-gtk
+        nextcloud-client
       ] ++ (import ./../../local/common/package-lists/essentials.nix) {
         inherit pkgs localPackages;
       };
@@ -358,11 +387,56 @@ in rec {
     services.openssh.enable = true;
     services.openssh.permitRootLogin = "yes";
 
+    services.kerberos_server.enable = true;
+
     services.fail2ban.enable = true;
 
     services.pcscd.enable = true;
 
     services.smartd.enable = true;
+
+    # Resources:
+    # http://rlworkman.net/howtos/NFS_Firewall_HOWTO
+    #
+    # Can mount in macOS like so:
+    # sudo mount -o rw,bg,hard,resvport,intr,noac,nfc,tcp 192.168.56.10:/home/eqyiel/shared /Volumes/localghost/shared
+    # You can also mount it in the Finder:  (command + k) nfs://localghost:/home/eqyiel/shared
+    services.nfs.server = {
+      enable = true;
+      mountdPort = 32767;
+      lockdPort = 32768;
+      exports = ''
+        # If UID and GIDs are not the same on the client and server you'll have
+        # problems with permissions. However, you can force all access to occur as
+        # a single user and group by combining the all_squash, anonuid, and
+        # anongid export options. all_squash will map all UIDs and GIDs to the
+        # anonymous user, and anonuid and anongid set the UID and GID of the
+        # anonymous user.
+        #
+        # See: http://serverfault.com/a/241272
+        #
+        # macOS NEEDS the 'insecure' flag.  The the Darwin default is to assume
+        # the nfs'ing will take place on an "insecure" port, i.e. > 1024, while
+        # we're serving on 111.
+        #
+        # In the future, look into using users.groups.users.gid here (instead of
+        # "100").  Right now it's being held back by
+        # https://github.com/NixOS/nixpkgs/issues/17237 - until then, make sure
+        # that anongid is the the same as users.groups.users.gid!
+        /export 192.168.1.0/24(sec=krb5p,rw,fsid=0,insecure,no_subtree_check)
+        /export/transmission 192.168.1.0/24(sec=krb5p,rw,nohide,insecure,no_subtree_check)
+        /export/media 192.168.1.0/24(sec=krb5p,rw,nohide,insecure,no_subtree_check)
+        /export/home 192.168.1.0/24(sec=krb5p,rw,nohide,insecure,no_subtree_check)
+      '';
+    };
+
+    krb5 = {
+      enable = true;
+      defaultRealm = "HOSHIJIRO.MAHER.FYI";
+      domainRealm = "HOSHIJIRO.MAHER.FYI";
+      kdc = "127.0.0.1";
+      kerberosAdminServer = "localhost";
+    };
 
     services.zfs = {
       autoScrub = { enable = true; interval = "daily"; };
