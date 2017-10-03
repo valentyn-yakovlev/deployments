@@ -253,47 +253,51 @@ in rec {
       networkmanager = {
         enable = true;
         packages = [ pkgs.gnome3.networkmanager_openvpn ];
-        dispatcherScripts = [
-          # Each script receives two arguments, the first being the interface name
-          # of the device an operation just happened on, and second the action.
-          #
-          # See: man 8 networkmanager
-          { # Update transmission's port forwarding assignment
-            type = "basic";
-            source = pkgs.writeScript "update-transmission-port-forwarding-assignment" ''
-              #!${pkgs.bash}/bin/bash
+        # dispatcherScripts = [
+        #   # Each script receives two arguments, the first being the interface name
+        #   # of the device an operation just happened on, and second the action.
+        #   #
+        #   # See: man 8 networkmanager
+        #   { # Update transmission's port forwarding assignment
+        #     type = "basic";
+        #     source = pkgs.writeScript "update-transmission-port-forwarding-assignment" ''
+        #       #!${pkgs.bash}/bin/bash
 
-              set -euo pipefail
+        #       set -euo pipefail
 
-              INTERFACE="''${1}"
-              ACTION="''${2}"
+        #       INTERFACE="''${1}"
+        #       ACTION="''${2}"
 
-              TEMP_FILE="$(${pkgs.coreutils}/bin/mktemp)"
+        #       TEMP_FILE="$(${pkgs.coreutils}/bin/mktemp)"
 
-              cleanup() {
-                ${pkgs.coreutils}/bin/rm "''${TEMP_FILE}"
-              }
+        #       cleanup() {
+        #         ${pkgs.coreutils}/bin/rm "''${TEMP_FILE}"
+        #       }
 
-              trap 'cleanup' EXIT
+        #       trap 'cleanup' EXIT
 
-              if [[ "''${ACTION}" == "vpn-up" ]]; then
-                CONFIG_FILE="${config.users.users.transmission.home}/.config/transmission-daemon/settings.json"
-                PORT="$(${localPackages.get-pia-port-forwarding-assignment}/bin/get-pia-port-forwarding-assignment | ${pkgs.jq}/bin/jq '.port')"
-                echo "Rewritten config: $(${pkgs.jq}/bin/jq --arg PORT "''${PORT}" '.["peer-port"] = $PORT')"
-                ${pkgs.jq}/bin/jq --arg PORT "''${PORT}" '.["peer-port"] = $PORT' < "''${CONFIG_FILE}" > "''${TEMP_FILE}"
+        #       if [[ "''${ACTION}" == "vpn-up" ]]; then
+        #         CONFIG_FILE="${config.users.users.transmission.home}/.config/transmission-daemon/settings.json"
+        #         PORT="$(${localPackages.get-pia-port-forwarding-assignment}/bin/get-pia-port-forwarding-assignment | ${pkgs.jq}/bin/jq '.port')"
+        #         echo "Rewritten config: $(${pkgs.jq}/bin/jq --arg PORT "''${PORT}" '.["peer-port"] = $PORT')"
+        #         ${pkgs.jq}/bin/jq --arg PORT "''${PORT}" '.["peer-port"] = $PORT' < "''${CONFIG_FILE}" > "''${TEMP_FILE}"
 
-                echo "Received port assignment of ''${PORT} for ''${INTERFACE}, reloading transmission daemon."
+        #         echo "Received port assignment of ''${PORT} for ''${INTERFACE}, reloading transmission daemon."
 
-                ${pkgs.coreutils}/bin/mv "''${TEMP_FILE}" "''${CONFIG_FILE}"
-                ${pkgs.coreutils}/bin/chmod 600 "''${CONFIG_FILE}"
-                ${pkgs.coreutils}/bin/chown transmission:transmission "''${CONFIG_FILE}"
+        #         ${pkgs.coreutils}/bin/mv "''${TEMP_FILE}" "''${CONFIG_FILE}"
+        #         ${pkgs.coreutils}/bin/chmod 600 "''${CONFIG_FILE}"
+        #         ${pkgs.coreutils}/bin/chown transmission:transmission "''${CONFIG_FILE}"
 
-                ${pkgs.systemd}/bin/systemctl reload transmission.service
-              fi
-            '';
-          }
-        ];
+        #         ${pkgs.systemd}/bin/systemctl reload transmission.service
+        #       fi
+        #     '';
+        #   }
+        # ];
       };
+      extraHosts = ''
+        192.168.1.174 ayanami.maher.fyi
+        127.0.0.1     hoshijiro.maher.fyi
+      '';
     };
 
     services.local--pia-nm.enable = true;
@@ -387,13 +391,26 @@ in rec {
     services.openssh.enable = true;
     services.openssh.permitRootLogin = "yes";
 
-    services.kerberos_server.enable = true;
+    services.kerberos_server = {
+      enable = true;
+      implementation = "mit";
+    };
 
     services.fail2ban.enable = true;
 
     services.pcscd.enable = true;
 
     services.smartd.enable = true;
+
+    services.openntpd = {
+      enable = true;
+      servers = [
+        "0.au.pool.ntp.org"
+	      "1.au.pool.ntp.org"
+	      "2.au.pool.ntp.org"
+	      "3.au.pool.ntp.org"
+      ];
+    };
 
     # Resources:
     # http://rlworkman.net/howtos/NFS_Firewall_HOWTO
@@ -423,32 +440,35 @@ in rec {
         # "100").  Right now it's being held back by
         # https://github.com/NixOS/nixpkgs/issues/17237 - until then, make sure
         # that anongid is the the same as users.groups.users.gid!
-        /export 192.168.1.0/24(sec=krb5p,rw,fsid=0,insecure,no_subtree_check)
-        /export/transmission 192.168.1.0/24(sec=krb5p,rw,nohide,insecure,no_subtree_check)
-        /export/media 192.168.1.0/24(sec=krb5p,rw,nohide,insecure,no_subtree_check)
-        /export/home 192.168.1.0/24(sec=krb5p,rw,nohide,insecure,no_subtree_check)
+        /export 192.168.1.0/24(rw,async,no_subtree_check,no_root_squash,sec=krb5p)
       '';
     };
 
     krb5 = {
       enable = true;
-      defaultRealm = "HOSHIJIRO.MAHER.FYI";
-      domainRealm = "HOSHIJIRO.MAHER.FYI";
-      kdc = "127.0.0.1";
-      kerberosAdminServer = "localhost";
-    };
-
-    services.zfs = {
-      autoScrub = { enable = true; interval = "daily"; };
-      autoSnapshot = {
-        enable = true;
-        flags = "-k -p --utc";
-        daily = 7;
-        frequent = 0;
-        hourly = 0;
-        monthly = 12;
-        weekly = 4;
+      libdefaults = {
+        default_realm = "HOSHIJIRO.MAHER.FYI";
       };
+
+      realms = {
+        "HOSHIJIRO.MAHER.FYI" = {
+          admin_server = "hoshijiro.maher.fyi";
+          kdc = "hoshijiro.maher.fyi";
+          default_principal_flags = "+preauth";
+        };
+      };
+
+      domain_realm = ''
+        hoshijiro.maher.fyi = HOSHIJIRO.MAHER.FYI;
+        .hoshijiro.maher.fyi = HOSHIJIRO.MAHER.FYI;
+      '';
+
+      extraConfig = ''
+        [logging]
+        kdc          = SYSLOG:NOTICE
+        admin_server = SYSLOG:NOTICE
+        default      = SYSLOG:NOTICE
+      '';
     };
 
     services.xserver = {
@@ -470,6 +490,10 @@ in rec {
         enable = true;
       };
     };
+
+    # Workaround for GDM crash
+    # https://github.com/NixOS/nixpkgs/issues/24172#issuecomment-304540789
+    systemd.targets."multi-user".conflicts = [ "getty@tty1.service" ];
 
     # TODO: move its actual home to here
     services.transmission = {
