@@ -80,6 +80,7 @@ in rec {
       cleanTmpDir = true;
       extraModulePackages = [ ];
       kernelModules = [ "kvm-intel" ];
+      kernelParams = [ "ipv6.disable=1" ];
       supportedFilesystems = [ "zfs" "nfs" ];
       initrd = {
         # network = {
@@ -126,10 +127,27 @@ in rec {
       # head -c4 /dev/urandom | od -A none -t x4
       hostId = "0f4dc8dd";
       hostName = "tomoyo.maher.fyi";
-      interfaces."eno1".ip4 = [{
-        address = "192.168.1.245";
-        prefixLength = 24;
-      }];
+      defaultGateway = "114.111.153.1";
+      nameservers = [ "122.100.13.50" "111.125.175.50" ];
+      interfaces."eno1".ip4 = [
+        {
+          address = "114.111.153.166";
+          prefixLength = 24;
+        }
+        {
+          address = "114.111.153.167";
+          prefixLength = 24;
+        }
+        {
+          address = "114.111.153.168";
+          prefixLength = 24;
+        }
+        {
+          address = "114.111.153.169";
+          prefixLength = 24;
+        }
+      ];
+      enableIPv6 = false;
       firewall = {
         enable = true;
         allowedTCPPorts = [
@@ -148,7 +166,7 @@ in rec {
         logRefusedPackets = true;
       };
       extraHosts = ''
-        127.0.0.1     tomoyo.maher.fyi
+        127.0.0.1 tomoyo.maher.fyi
       '';
     };
 
@@ -162,6 +180,7 @@ in rec {
 
     environment = {
       systemPackages = with pkgs; [
+        lm_sensors
         zfs
         zfstools
       ] ++ (import ./../../local/common/package-lists/essentials.nix) {
@@ -225,6 +244,6 @@ in rec {
 
     nix.gc.automatic = true;
 
-    system.stateVersion = "17.09";
+    system.stateVersion = "18.03";
   };
 }
