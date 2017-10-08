@@ -64,9 +64,10 @@ in rec {
 
     swapDevices = [{ device = "/dev/mapper/vgroup-swap"; }];
 
-    nix.maxJobs = lib.mkDefault 12;
-
-    powerManagement.cpuFreqGovernor = "powersave";
+    powerManagement = {
+      enable = true;
+      cpuFreqGovernor = "powersave";
+    };
 
     boot = {
       zfs = {
@@ -130,19 +131,19 @@ in rec {
       defaultGateway = "114.111.153.1";
       nameservers = [ "122.100.13.50" "111.125.175.50" ];
       interfaces."eno1".ip4 = [
-        {
+        { # ptr -> maher.fyi
           address = "114.111.153.166";
           prefixLength = 24;
         }
-        {
+        { # ptr -> shitpost.digital
           address = "114.111.153.167";
           prefixLength = 24;
         }
-        {
+        { # ptr -> throwaway.digital
           address = "114.111.153.168";
           prefixLength = 24;
         }
-        {
+        { # ptr -> rkm.id.au
           address = "114.111.153.169";
           prefixLength = 24;
         }
@@ -207,6 +208,25 @@ in rec {
       ];
     };
 
+    services.prometheus = {
+      nodeExporter = {
+        enable = true;
+        enabledCollectors = [
+          "systemd"
+          "diskstats"
+          "filesystem"
+          "loadavg"
+          "meminfo"
+          "netdev"
+          "netstat"
+          "stat"
+          "time"
+          "uname"
+        ];
+        openFirewall = false; # using proxyPass
+      };
+    };
+
     services.resolved = { enable = true; };
 
     programs.zsh.enable = true;
@@ -228,7 +248,7 @@ in rec {
 
       eqyiel = {
         home = "/mnt/home/${config.users.users.eqyiel.name}";
-        isNormalUser = false;
+        isNormalUser = true;
         isSystemUser = false;
         extraGroups = [
           "wheel"
@@ -240,9 +260,26 @@ in rec {
         ];
         inherit (secrets.users.users.eqyiel) initialPassword;
       };
+
+      nix-builder = {
+        isNormalUser = true;
+        useDefaultShell = true;
+        home = "/var/lib/${config.users.users.nix-builder.name}";
+        createHome = true;
+        openssh.authorizedKeys.keys = [
+          sshKeys.rkm sshKeys.nix-builder
+        ];
+        inherit (secrets.users.users.nix-builder) initialPassword;
+      };
     };
 
-    nix.gc.automatic = true;
+    nix = {
+      trustedUsers = [ "root" "nix-builder" ];
+      gc.automatic = true;
+      sshServe.enable = true;
+      sshServe.keys = [ sshKeys.rkm ];
+      maxJobs = lib.mkDefault 12;
+    };
 
     system.stateVersion = "18.03";
   };
