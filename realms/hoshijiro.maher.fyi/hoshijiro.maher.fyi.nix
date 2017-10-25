@@ -205,15 +205,15 @@ in rec {
             --source-port ${toString config.services.transmission.port} \
             --jump ACCEPT
 
-          # Also allow these users to reach port 80 (where nginx is proxying
-          # requests) on the loopback interface.
-          # that get dropped below?
-          ip46tables \
-            --append restrict-users-tun-output \
-            --out-interface lo \
-            --protocol tcp \
-            --destination-port 80 \
-            --jump ACCEPT
+          # # Also allow these users to reach port 80 (where nginx is proxying
+          # # requests) on the loopback interface.
+          # # that get dropped below?
+          # ip46tables \
+          #   --append restrict-users-tun-output \
+          #   --out-interface lo \
+          #   --protocol tcp \
+          #   --destination-port 80 \
+          #   --jump ACCEPT
 
           # DROP any packet which is going to be sent by this --uid-owner if
           # it is for any --out-interface whose name does not (\!) start with
@@ -321,6 +321,7 @@ in rec {
         libreoffice
         python27Packages.syncthing-gtk
         nextcloud-client
+        kdeconnect
       ] ++ (import ./../../local/common/package-lists/essentials.nix) {
         inherit pkgs localPackages;
       };
@@ -553,6 +554,6 @@ in rec {
 
     nix.gc.automatic = true;
 
-    system.stateVersion = "17.09";
+    system.stateVersion = "18.03";
   };
 }

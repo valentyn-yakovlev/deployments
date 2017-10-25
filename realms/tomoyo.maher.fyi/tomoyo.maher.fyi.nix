@@ -1,9 +1,14 @@
 {
   network.description = "tomoyo.maher.fyi";
 
+  # Keep a GC root for the build
+  network.enableRollback = true;
+
   tomoyo = { config, lib, pkgs, ... }: let
 
     sshKeys = import ./../../local/common/ssh-keys.nix;
+
+    commonAcmeConfig = ./../../local/common/acme-config.nix;
 
     secrets = import ./secrets.nix;
 
@@ -13,6 +18,7 @@
 
 in rec {
     imports = [
+      ./containers
       ./../../local/pkgs/overrides.nix
     ] ++ (import ./../../local/modules/module-list.nix);
 
@@ -139,7 +145,7 @@ in rec {
           address = "114.111.153.167";
           prefixLength = 24;
         }
-        { # ptr -> throwaway.digital
+        { # ptr -> rsvp.fyi
           address = "114.111.153.168";
           prefixLength = 24;
         }
@@ -155,6 +161,7 @@ in rec {
           22 # ssh, sftp
           80 # http
           88 # Kerberos v5
+          443 # HTTPS
           111 # NFS
           2049 # NFS
         ];
@@ -191,6 +198,63 @@ in rec {
 
     services.openssh.enable = true;
     services.openssh.permitRootLogin = "yes";
+
+    services.hydra = {
+      enable = true;
+      useSubstitutes = true;
+      hydraURL = "https://hydra.maher.fyi";
+      notificationSender = "hydra@maher.fyi";
+    };
+
+    services.nginx = {
+      enable = true;
+      appendConfig = ''
+        error_log stderr info;
+      '';
+      virtualHosts = {
+        "maher.fyi" =  {
+          forceSSL = true;
+          enableACME = true;
+        };
+
+        "cloud.maher.fyi" =  {
+          forceSSL = true;
+          enableACME = true;
+        };
+
+        "hydra.maher.fyi" =  {
+          forceSSL = true;
+          enableACME = true;
+          locations = {
+            "/" = {
+              proxyPass = "http://localhost:3000";
+              extraConfig = ''
+                proxy_set_header Host $http_host;
+                proxy_set_header REMOTE_ADDR $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto https;
+              '';
+            };
+          };
+        };
+
+        "_" = {
+          default = true;
+          locations = {
+            "/.well-known/acme-challenge" = {
+              root = "/var/lib/acme/acme-challenge";
+            };
+            "= /robots.txt" = {
+              extraConfig = ''
+                allow all;
+                log_not_found off;
+                access_log off;
+              '';
+            };
+          };
+        };
+      };
+    };
 
     services.fail2ban.enable = true;
 
@@ -274,8 +338,18 @@ in rec {
     };
 
     nix = {
+      buildMachines = [{
+        hostName = "localhost";
+        systems = [ "x86_64-linux" ];
+        maxJobs = 12;
+        supportedFeatures = [ "kvm" "nixos-test" ];
+      }];
       trustedUsers = [ "root" "nix-builder" ];
-      gc.automatic = true;
+      gc = {
+        automatic = true;
+        dates = "monthly";
+        options = "--delete-older-than 31d";
+      };
       sshServe.enable = true;
       sshServe.keys = [ sshKeys.rkm ];
       maxJobs = lib.mkDefault 12;

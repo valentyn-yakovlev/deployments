@@ -1,3 +1,9 @@
 [submodule "realms/tomoyo.maher.fyi/nixpkgs"]
 	path = realms/tomoyo.maher.fyi/nixpkgs
 	url = git@github.com:eqyiel/nixpkgs.git
+[submodule "realms/aisaka.maher.fyi/nixpkgs"]
+	path = realms/aisaka.maher.fyi/nixpkgs
+	url = git@github.com:eqyiel/nixpkgs.git
+[submodule "realms/hoshijiro.maher.fyi/nixpkgs"]
+	path = realms/hoshijiro.maher.fyi/nixpkgs
+	url = git@github.com:eqyiel/nixpkgs.git
