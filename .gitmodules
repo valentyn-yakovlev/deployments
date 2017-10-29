@@ -7,3 +7,9 @@
 [submodule "realms/hoshijiro.maher.fyi/nixpkgs"]
 	path = realms/hoshijiro.maher.fyi/nixpkgs
 	url = git@github.com:eqyiel/nixpkgs.git
+[submodule "realms/hoshijiro.maher.fyi/home-manager"]
+	path = realms/hoshijiro.maher.fyi/home-manager
+	url = git@github.com:rycee/home-manager.git
+[submodule "realms/tomoyo.maher.fyi/home-manager"]
+	path = realms/tomoyo.maher.fyi/home-manager
+	url = git@github.com:rycee/home-manager.git

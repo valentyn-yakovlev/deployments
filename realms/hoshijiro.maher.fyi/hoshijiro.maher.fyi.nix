@@ -2,6 +2,9 @@
 {
   network.description = "hoshijiro.maher.fyi";
 
+  # Keep a GC root for the build
+  network.enableRollback = true;
+
   hoshijiro = { config, lib, pkgs, ... }: let
 
     sshKeys = import ./../../local/common/ssh-keys.nix;
@@ -12,8 +15,10 @@
       inherit config lib pkgs;
     };
 
-in rec {
+  in rec {
     imports = [
+      ./home-manager/nixos
+      ./home
       ./../../local/pkgs/overrides.nix
     ] ++ (import ./../../local/modules/module-list.nix);
 
@@ -219,8 +224,7 @@ in rec {
           # it is for any --out-interface whose name does not (\!) start with
           # "tun".
           for user in \
-            ${config.users.users.transmission.name} \
-            ${config.users.users.eqyiel.name}; do
+            ${config.users.users.transmission.name}; do
             ip46tables \
               --append restrict-users-tun-output \
               --match owner \
@@ -314,14 +318,6 @@ in rec {
       systemPackages = with pkgs; [
         zfs
         zfstools
-        mpv
-        firefox
-        chromium
-        hplip
-        libreoffice
-        python27Packages.syncthing-gtk
-        nextcloud-client
-        kdeconnect
       ] ++ (import ./../../local/common/package-lists/essentials.nix) {
         inherit pkgs localPackages;
       };
@@ -391,11 +387,6 @@ in rec {
 
     services.openssh.enable = true;
     services.openssh.permitRootLogin = "yes";
-
-    services.kerberos_server = {
-      enable = true;
-      implementation = "mit";
-    };
 
     services.fail2ban.enable = true;
 
@@ -482,19 +473,11 @@ in rec {
       xkbOptions = "caps:hyper";
       displayManager.gdm = {
         enable = true;
-        autoLogin = {
-          enable = true;
-          user = "eqyiel";
-        };
       };
       desktopManager.gnome3 = {
         enable = true;
       };
     };
-
-    # Workaround for GDM crash
-    # https://github.com/NixOS/nixpkgs/issues/24172#issuecomment-304540789
-    systemd.targets."multi-user".conflicts = [ "getty@tty1.service" ];
 
     # TODO: move its actual home to here
     services.transmission = {
@@ -524,19 +507,33 @@ in rec {
 
     security.sudo.wheelNeedsPassword = false;
 
+    # TODO, enable automatic login for users in nopasswdlogin group
+    # security.pam.services = {
+    #   gdm-password.text = ''
+    #     auth sufficient pam_succeed_if.so user ingroup nopasswdlogin
+    #     ${config.security.pam.services.gdm-password.text}
+    #   '';
+    # };
+    #
+    # users.groups = {
+    #   # users in this group can bypass the GDM password prompt
+    #   nopasswdlogin.members = [ config.users.users.normie.name ];
+    # };
+
     users.mutableUsers = false;
 
     users.users = {
       root = {
         shell = pkgs.zsh;
         openssh.authorizedKeys.keys = [
-         sshKeys.rkm
-       ];
-       inherit (secrets.users.users.root) initialPassword;
-     };
+          sshKeys.rkm
+        ];
+        inherit (secrets.users.users.root) initialPassword;
+      };
 
       eqyiel = {
         home = "/mnt/home/${config.users.users.eqyiel.name}";
+        createHome = true;
         isNormalUser = false;
         isSystemUser = false;
         extraGroups = [
@@ -549,6 +546,29 @@ in rec {
           sshKeys.rkm
         ];
         inherit (secrets.users.users.eqyiel) initialPassword;
+      };
+
+      versapunk = {
+        home = "/mnt/home/${config.users.users.versapunk.name}";
+        createHome = true;
+        isNormalUser = false;
+        isSystemUser = false;
+        shell = pkgs.zsh;
+        extraGroups = [
+          "${config.users.users.transmission.group}"
+        ];
+        inherit (secrets.users.users.versapunk) initialPassword;
+      };
+
+      normie = {
+        home = "/mnt/home/${config.users.users.normie.name}";
+        createHome = true;
+        isNormalUser = false;
+        isSystemUser = false;
+        extraGroups = [
+          "${config.users.users.transmission.group}"
+        ];
+        shell = pkgs.zsh;
       };
     };
 
