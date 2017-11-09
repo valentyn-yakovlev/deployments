@@ -54,4 +54,11 @@ rec {
     };
     config = (import ./hanabi.nix { inherit config lib pkgs; });
   };
+
+  containers.mail-server = {
+    privateNetwork = true;
+    hostAddress = "192.168.102.20";
+    localAddress = "192.168.102.21";
+    config = (import ./mail-server.nix { inherit config lib pkgs; });
+  };
 }

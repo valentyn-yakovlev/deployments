@@ -1,0 +1,8 @@
+{ ... }:
+
+{
+  imports = [
+    ./containers
+    ./home.nix
+  ];
+}

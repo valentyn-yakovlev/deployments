@@ -17,8 +17,8 @@
 
   in rec {
     imports = [
-      ./home-manager/nixos
-      ./home
+      ./lib
+      ./config
       ./../../local/pkgs/overrides.nix
     ] ++ (import ./../../local/modules/module-list.nix);
 
@@ -318,6 +318,7 @@
       systemPackages = with pkgs; [
         zfs
         zfstools
+        kdeconnect
       ] ++ (import ./../../local/common/package-lists/essentials.nix) {
         inherit pkgs localPackages;
       };

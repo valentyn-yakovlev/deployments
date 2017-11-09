@@ -3,7 +3,7 @@
 with lib;
 
 let
-  commonAcmeConfig = ./../../local/common/acme-config.nix;
+  commonAcmeConfig = ../../../../local/common/acme-config.nix;
 in {
   # required for php's date.timezone
   time.timeZone = "Australia/Adelaide";
@@ -68,4 +68,6 @@ in {
       '';
     }];
   };
+
+  system.stateVersion = "18.03";
 }

@@ -18,7 +18,8 @@
 
 in rec {
     imports = [
-      ./containers
+      ./lib
+      ./config
       ./../../local/pkgs/overrides.nix
     ] ++ (import ./../../local/modules/module-list.nix);
 
@@ -358,3 +359,7 @@ in rec {
     system.stateVersion = "18.03";
   };
 }
+
+# Local Variables:
+# mode: nix
+# End:
