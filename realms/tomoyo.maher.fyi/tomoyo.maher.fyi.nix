@@ -160,13 +160,10 @@ in rec {
         enable = true;
         allowedTCPPorts = [
           22 # ssh, sftp
-          25 # smtp
           80 # http
           88 # Kerberos v5
           111 # NFS
-          143 # imap
           443 # HTTPS
-          587 # smtps
           2049 # NFS
         ];
         allowedUDPPorts = [
