@@ -134,7 +134,7 @@ in rec {
       # or
       # head -c4 /dev/urandom | od -A none -t x4
       hostId = "0f4dc8dd";
-      hostName = "tomoyo.maher.fyi";
+      hostName = "maher.fyi";
       defaultGateway = "114.111.153.1";
       nameservers = [ "122.100.13.50" "111.125.175.50" ];
       interfaces."eno1".ip4 = [
