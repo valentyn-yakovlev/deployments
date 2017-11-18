@@ -14,7 +14,28 @@ in {
     vmailUserName = "vmail";
     vmailGroupName = "vmail";
     certificateScheme = 3;
-    loginAccounts = secrets.mailserver.loginAccounts;
+    loginAccounts = {
+      "ruben@maher.fyi" = (secrets.mailserver.loginAccounts."ruben@maher.fyi") // {
+
+        sieveScript = ''
+           require ["fileinto", "mailbox"];
+
+           if address :is "from" "notifications@github.com" {
+             fileinto :create "GitHub";
+             stop;
+           }
+
+           # This must be the last rule, it will check if list-id is set, and
+           # file the message into the Lists folder for further investigation
+           elsif header :matches "list-id" "<?*>" {
+             fileinto :create "Lists";
+             stop;
+           }
+         '';
+      };
+
+      "nadiah@maher.fyi" = (secrets.mailserver.loginAccounts."nadiah@maher.fyi") // {};
+    };
     dkimKeyDirectory = "/var/dkim";
     mailDirectory = "/mnt/home/${config.users.users.vmail.name}";
     virtualAliases = {

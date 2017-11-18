@@ -51,6 +51,7 @@ in {
       </IfModule>
     '';
     enablePHP = true;
+    phpPackage = pkgs.php56;
     virtualHosts = [{
       documentRoot = "/data/public_html";
       inherit hostName;
