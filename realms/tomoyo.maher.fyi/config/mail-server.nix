@@ -57,8 +57,6 @@ in {
   services.dovecot2.extraConfig = ''
     listen = *
 
-    auth_debug_passwords = yes
-
     # k-9 mail chews through these
     mail_max_userip_connections = 50
 
