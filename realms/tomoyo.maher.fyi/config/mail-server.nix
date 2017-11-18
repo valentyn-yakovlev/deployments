@@ -16,7 +16,6 @@ in {
     certificateScheme = 3;
     loginAccounts = {
       "ruben@maher.fyi" = (secrets.mailserver.loginAccounts."ruben@maher.fyi") // {
-
         sieveScript = ''
            require ["fileinto", "mailbox"];
 
