@@ -3,8 +3,10 @@
 let
 
   sshKeys = import ./../../local/common/ssh-keys.nix;
+
   secrets = import ./secrets.nix;
-  commonAcmeConfig = ./../../local/common/acme-config.nix
+
+  commonAcmeConfig = import ./../../local/common/acme-config.nix;
 
 in
 
@@ -16,7 +18,6 @@ in
     imports = [
      # ../../local/modules/module-list.nix
      ./dhparams.nix
-     ./nextcloud.nix
      ./rsvp.fyi.nix
      ./syncthing.nix
      ./mail-server.nix

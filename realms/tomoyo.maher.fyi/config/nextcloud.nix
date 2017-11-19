@@ -1,16 +1,17 @@
 { config, lib, pkgs, ... }:
+
 let
 
-nextcloudPath = "/var/lib/nextcloud";
-hostname = "cloud.rkm.id.au";
-commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
+  nextcloudPath = "/mnt/var/lib/nextcloud";
+
+  hostname = "cloud.maher.fyi";
+
+  commonAcmeConfig = (import ./common-acme-config.nix).commonAcmeConfig;
 
 in {
   services.nginx.virtualHosts."${hostname}" = {
-    onlySSL = true;
+    forceSSL = true;
     enableACME = true;
-    # sslCertificate = "/var/lib/acme/${hostname}/fullchain.pem";
-    # sslCertificateKey = "/var/lib/acme/${hostname}/key.pem";
     extraConfig = ''
       # Add headers to serve security related headers
       # Before enabling Strict-Transport-Security headers please read into this
@@ -154,7 +155,7 @@ in {
           mkdir -p "''${NEXTCLOUD_PATH}/"{,config,data}
           cp -r "${pkgs.nextcloud}/apps" "''${NEXTCLOUD_PATH}"
           chmod 755 "''${NEXTCLOUD_PATH}"
-          chown -R www-data:www-data "''${NEXTCLOUD_PATH}"
+          chown -R nginx:nginx "''${NEXTCLOUD_PATH}"
         fi
 
         if (test -L "''${NEXTCLOUD_PATH}/apps_internal"); then
@@ -173,10 +174,12 @@ in {
     after = [ "network.target" ];
     script = ''
       ${pkgs.php}/bin/php ${pkgs.nextcloud}/cron.php
-      ${pkgs.nextcloud-news-updater}/bin/nextcloud-news-updater -i 15 --mode singlerun ${pkgs.nextcloud}
+      ${pkgs.nextcloud-news-updater}/bin/nextcloud-news-updater \
+        -i 15 \
+        --mode singlerun ${pkgs.nextcloud}
     '';
     environment = { NEXTCLOUD_CONFIG_DIR = "${nextcloudPath}/config"; };
-    serviceConfig.User = "www-data";
+    serviceConfig.User = "nginx";
   };
 
   systemd.timers.nextcloud-cron = {
@@ -190,11 +193,11 @@ in {
   };
 
   services.phpfpm.poolConfigs.nextcloud = ''
-    user = www-data
-    group = www-data
+    user = nginx
+    group = nginx
     listen = /run/phpfpm/nextcloud
-    listen.owner = www-data
-    listen.group = www-data
+    listen.owner = nginx
+    listen.group = nginx
     pm = dynamic
     pm.max_children = 5
     pm.start_servers = 2
