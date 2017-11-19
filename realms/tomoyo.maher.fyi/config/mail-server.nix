@@ -43,7 +43,7 @@ in {
       "nadiah@maher.fyi" = (secrets.mailserver.loginAccounts."nadiah@maher.fyi") // {};
     };
     dkimKeyDirectory = "/var/dkim";
-    mailDirectory = "/mnt/home/${config.users.users.vmail.name}";
+    mailDirectory = "/mnt/var/lib/${config.users.users.vmail.name}";
     virtualAliases = {
       "*" = "ruben@maher.fyi";
     };
@@ -54,7 +54,7 @@ in {
 
   users.users = {
     vmail = {
-      home = lib.mkForce "/mnt/home/${config.users.users.vmail.name}";
+      home = lib.mkForce "/mnt/var/lib/${config.users.users.vmail.name}";
       createHome = true;
     };
   };
