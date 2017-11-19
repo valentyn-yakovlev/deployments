@@ -1,4 +1,5 @@
-{}:
+{ config, lib, pkgs, ... }:
+
 let
   secrets = import ./secrets.nix;
 
@@ -15,14 +16,16 @@ in {
     allowedUDPPortRanges = [
       { from = 49152; to = 65535; } # coturn
     ];
+    trustedInterfaces = [ "lo" ];
   };
 
   services.matrix-synapse = {
+    dataDir = "/mnt/var/lib/matrix-synapse";
     allow_guest_access = false;
     bcrypt_rounds = "12";
     enable = true;
     web_client = false;
-    enable_registration = false;
+    enable_registration = true;
     registration_shared_secret = secrets.services.matrix-synapse.registration_shared_secret;
     server_name = fqdn;
     database_type = "psycopg2";
@@ -59,13 +62,36 @@ in {
 
   services.nginx = {
     enable = true;
-    virtualHosts."${fqdn}" = {
-      serverName = fqdn;
-      forceSSL = true;
-      enableACME = true;
-      acmeRoot = "/var/lib/acme/acme-challenge";
+    virtualHosts = {
+      "maher.fyi" = {
+        forceSSL = true;
+        enableACME = true;
+        locations = {
+          "/_matrix" = {
+            proxyPass = "https://127.0.0.1:8448/_matrix";
+          };
+          "= /robots.txt" = {
+            extraConfig = ''
+              allow all;
+              log_not_found off;
+              access_log off;
+            '';
+          };
+        };
+      };
     };
   };
+
+  # This is not necessary if acme is enabled elsewhere for this fqdn.
+  # services.nginx = {
+  #   enable = true;
+  #   virtualHosts."${fqdn}" = {
+  #     serverName = fqdn;
+  #     forceSSL = true;
+  #     enableACME = true;
+  #     acmeRoot = "/var/lib/acme/acme-challenge";
+  #   };
+  # };
 
   security.acme.certs."${fqdn}".postRun = "systemctl reload-or-restart matrix-synapse coturn";
 }

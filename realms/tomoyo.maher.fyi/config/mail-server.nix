@@ -33,6 +33,13 @@ in {
          '';
       };
 
+      "r@rkm.id.au" = (secrets.mailserver.loginAccounts."r@rkm.id.au") // {
+        sieveScript = ''
+          redirect "ruben@maher.fyi";
+          stop;
+        '';
+      };
+
       "nadiah@maher.fyi" = (secrets.mailserver.loginAccounts."nadiah@maher.fyi") // {};
     };
     dkimKeyDirectory = "/var/dkim";

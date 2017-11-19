@@ -175,7 +175,7 @@ in rec {
         logRefusedPackets = true;
       };
       extraHosts = ''
-        127.0.0.1 tomoyo.maher.fyi
+        127.0.0.1 maher.fyi
       '';
     };
 
@@ -211,9 +211,6 @@ in rec {
 
     services.nginx = {
       enable = true;
-      appendConfig = ''
-        error_log stderr info;
-      '';
       virtualHosts = {
         "maher.fyi" =  {
           forceSSL = true;
