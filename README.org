@@ -1,0 +1,3 @@
+The contents of this repo have moved to [[https://github.com/eqyiel/dotfiles/tree/master/nix/.config/nixpkgs/nixops][here]].
+
+Spelunkers might enjoy looking at the [[https://github.com/eqyiel/deployments/tree/archive][archive]] branch though.
